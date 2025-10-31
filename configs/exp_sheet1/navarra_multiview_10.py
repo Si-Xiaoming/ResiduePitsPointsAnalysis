@@ -15,7 +15,7 @@ dataset_type = "NavarraDataset"
 data_root = "/datasets/ft_data_navarra_1-0"
 # internship\unused_land_data
 # "/datasets/ft_data/"
-epoch = 200
+epoch = 400 # 修改了!!
 eval_epoch = 20
 
 # model settings
