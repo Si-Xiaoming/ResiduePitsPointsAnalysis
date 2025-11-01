@@ -7,15 +7,16 @@ mix_prob = 0.8
 clip_grad = 3.0
 empty_cache = False
 enable_amp = True
-num_points_per_step = 65536
+num_points_per_step = 300
 grid_size = 0.1
-weight = "/datasets/exp_pretrain_0.1gridsize/default/model/epoch_10.pth"
+weight = "/datasets/exp/lora_exp/models/model_last.pth"
 #weight = "/datasets/models/ft/model_last-std.pth"
 dataset_type = "NavarraDataset"
-data_root = "/datasets/ft_data/"
-# data_root = "/datasets/internship/unused_land_data/"
-save_path = "/datasets/output/ft_0.1"
-epoch = 300 # 300
+data_root = "/datasets/internship/unused_land_data/"
+# data_root = "/datasets/ft_data/"
+save_path = "/datasets/exp/default_ft_full_arg_no_lora"
+
+epoch = 20 # 300
 eval_epoch = 10
 # model settings
 model = dict(
@@ -55,7 +56,7 @@ model = dict(
     criteria=[
         dict(type="CrossEntropyLoss", loss_weight=1.0, ignore_index=-1),
         dict(type="LovaszLoss", mode="multiclass", loss_weight=1.0, ignore_index=-1),
-        dict(type="ClassAwareTCRLoss")
+        # dict(type="ClassAwareTCRLoss")
         # dict(type="DynamicCenterLoss")
     ],
     freeze_backbone=False,

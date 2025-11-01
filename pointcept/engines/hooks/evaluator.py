@@ -174,10 +174,24 @@ class SemSegEvaluator(HookBase):
         m_iou = np.mean(iou_class)
         m_acc = np.mean(acc_class)
         all_acc = sum(intersection) / (sum(target) + 1e-10)
+
+
+        fp = union - intersection
+        fn = target - intersection
+        dice_class = (2 * intersection) / (2 * intersection + fp + fn + 1e-10)
+        precision_class = intersection / (intersection + fp + 1e-10)
+        recall_class = intersection / (intersection + fn + 1e-10)
+
+        m_dice = np.mean(dice_class)
+        m_precision = np.mean(precision_class)
+        m_recall = np.mean(recall_class)
+
+
         self.trainer.logger.info(
-            "Val result: mIoU/mAcc/allAcc {:.4f}/{:.4f}/{:.4f}.".format(
+            "Val result: mIoU/mAcc/allAcc {:.4f}/{:.4f}/{:.4f},".format(
                 m_iou, m_acc, all_acc
             )
+            f"mDice/mPrecision/mRecall {m_dice:.4f}/{m_precision:.4f}/{m_recall:.4f}."
         )
         for i in range(self.trainer.cfg.data.num_classes):
             self.trainer.logger.info(
