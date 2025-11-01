@@ -187,12 +187,12 @@ class SemSegEvaluator(HookBase):
         m_recall = np.mean(recall_class)
 
 
+
         self.trainer.logger.info(
-            "Val result: mIoU/mAcc/allAcc {:.4f}/{:.4f}/{:.4f},".format(
-                m_iou, m_acc, all_acc
-            )
-            f"mDice/mPrecision/mRecall {m_dice:.4f}/{m_precision:.4f}/{m_recall:.4f}."
+            f"Val result: mIoU/mAcc/allAcc {m_iou:.4f}/{m_acc:.4f}/{all_acc:.4f}, "
+            f"mDice/mPrecision/mRecall {m_dice:.4f}/{m_precision:.4f}/{m_recall:.4f}"
         )
+
         for i in range(self.trainer.cfg.data.num_classes):
             self.trainer.logger.info(
                 "Class_{idx}-{name} Result: iou/accuracy {iou:.4f}/{accuracy:.4f}".format(
