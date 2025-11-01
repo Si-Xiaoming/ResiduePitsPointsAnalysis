@@ -4,24 +4,25 @@ _base_ = ["../_base_/default_runtime.py"]
 batch_size = 1  # bs: total bs in all gpus
 num_worker = 1
 mix_prob = 0.8
-clip_grad = 3.0  # ++++
+clip_grad = 3.0
 empty_cache = False
 enable_amp = True
 num_points_per_step = 65536
-weight = "/datasets/exp/multi_view/models/model_last.pth"
-# weight = "/datasets/exp/default/model/model_last.pth"
-grid_size = 0.1
-epoch = 50
-eval_epoch = 5
+grid_size = 0.5
+weight = "/datasets/exp/pretrain_outdoor_01_ep2000_DensityPerturbationViewGenerator/model/epoch_5.pth"
+
 dataset_type = "NavarraDataset"
-data_root = "/datasets/ft_data/"
-save_path = "/datasets/exp/cfp/04"
-# data_root = "/datasets/internship/unused_land_data"
+data_root = "/datasets/ft_data_navarra_0-5"
+# internship\unused_land_data
+# "/datasets/ft_data/"
+epoch = 400 # 修改了!!
+eval_epoch = 20
+
 # model settings
 model = dict(
-    type="MultiResCFPSegmentor",
+    type="DefaultSegmentorV2",
     num_classes=4,
-    backbone_out_channels=48,  # 512
+    backbone_out_channels=64,
     backbone=dict(
         type="PT-v3m2",
         in_channels=6,
@@ -31,6 +32,10 @@ model = dict(
         enc_channels=(48, 96, 192, 384, 512),
         enc_num_head=(3, 6, 12, 24, 32),
         enc_patch_size=(1024, 1024, 1024, 1024, 1024),
+        dec_depths=(2, 2, 2, 2),
+        dec_channels=(64, 96, 192, 384),
+        dec_num_head=(4, 6, 12, 24),
+        dec_patch_size=(1024, 1024, 1024, 1024),
         mlp_ratio=4,
         qkv_bias=True,
         qk_scale=None,
@@ -45,47 +50,33 @@ model = dict(
         upcast_softmax=False,
         traceable=False,
         mask_token=False,
-        enc_mode=True,
-        freeze_encoder=False,
+        enc_mode=False,
+        freeze_encoder=True,
     ),
     criteria=[
         dict(type="CrossEntropyLoss", loss_weight=1.0, ignore_index=-1),
         dict(type="LovaszLoss", mode="multiclass", loss_weight=1.0, ignore_index=-1),
     ],
-    freeze_backbone=True,
-    scales=[1.0, 0.5, 0.25],  # 三个分辨率：原始、1/2、1/4
-    sampling_method='fps',  # 使用最远点采样
-    cfp_reduction_ratio=4,
+    freeze_backbone=False,
 )
 
 # scheduler settings
 
 optimizer = dict(type="AdamW", lr=0.002, weight_decay=0.02)
-# scheduler = dict(
-#     type="OneCycleLR",
-#     max_lr=[0.002, 0.0002],
-#     pct_start=0.05,
-#     anneal_strategy="cos",
-#     div_factor=10.0,
-#     final_div_factor=1000.0,
-# )
 scheduler = dict(
     type="OneCycleLR",
-    max_lr=[0.01, 0.002, 0.02],
+    max_lr=[0.002, 0.0002],
     pct_start=0.05,
     anneal_strategy="cos",
     div_factor=10.0,
     final_div_factor=1000.0,
 )
-# param_dicts = [dict(keyword="block", lr=0.0002)]
-param_dicts = [dict(keyword="cfp_", lr=0.001), dict(keyword="block", lr=0.0002)]
-
-# dataset settings
+param_dicts = [dict(keyword="block", lr=0.0002)]
 
 data = dict(
     num_classes=4,
     ignore_index=-1,
-    names = [
+    names=[
         "ground",
         "vegetation",
         "building",
@@ -109,15 +100,14 @@ data = dict(
             dict(type="RandomFlip", p=0.5),
             dict(type="RandomJitter", sigma=0.005, clip=0.02),
             # dict(type="ElasticDistortion", distortion_params=[[0.2, 0.4], [0.8, 1.6]]),
-
-            # dict(type="ChromaticAutoContrast", p=0.2, blend_factor=None),
+            dict(type="ChromaticAutoContrast", p=0.2, blend_factor=None),
             dict(type="ChromaticTranslation", p=0.95, ratio=0.05),
             dict(type="ChromaticJitter", p=0.95, std=0.05),
             # dict(type="HueSaturationTranslation", hue_max=0.2, saturation_max=0.2),
             # dict(type="RandomColorDrop", p=0.2, color_augment=0.0),
             dict(
                 type="GridSample",
-                grid_size=grid_size*2,
+                grid_size=grid_size,
                 hash_type="fnv",
                 mode="train",
                 return_grid_coord=True,
@@ -144,12 +134,13 @@ data = dict(
             dict(type="Copy", keys_dict={"segment": "origin_segment"}),
             dict(
                 type="GridSample",
-                grid_size=grid_size*15,
+                grid_size=grid_size,
                 hash_type="fnv",
                 mode="train",
                 return_grid_coord=True,
                 return_inverse=True,
             ),
+            # dict(type="SphereCrop", point_max=num_points_per_step, mode="random"),
             dict(type="CenterShift", apply_z=False),
             # dict(type="NormalizeColor"),
             dict(type="ToTensor"),
@@ -176,7 +167,6 @@ data = dict(
                 grid_size=grid_size,
                 hash_type="fnv",
                 mode="test",
-                # keys=("coord", "color"),
                 return_grid_coord=True,
             ),
             crop=None,
@@ -190,31 +180,123 @@ data = dict(
                 ),
             ],
             aug_transform=[
-                [dict(type="RandomScale", scale=[0.9, 0.9])],
-                [dict(type="RandomScale", scale=[0.95, 0.95])],
-                [dict(type="RandomScale", scale=[1, 1])],
-                [dict(type="RandomScale", scale=[1.05, 1.05])],
-                [dict(type="RandomScale", scale=[1.1, 1.1])],
                 [
-                    dict(type="RandomScale", scale=[0.9, 0.9]),
-                    dict(type="RandomFlip", p=1),
+                    dict(
+                        type="RandomRotateTargetAngle",
+                        angle=[0],
+                        axis="z",
+                        center=[0, 0, 0],
+                        p=1,
+                    )
                 ],
                 [
+                    dict(
+                        type="RandomRotateTargetAngle",
+                        angle=[1 / 2],
+                        axis="z",
+                        center=[0, 0, 0],
+                        p=1,
+                    )
+                ],
+                [
+                    dict(
+                        type="RandomRotateTargetAngle",
+                        angle=[1],
+                        axis="z",
+                        center=[0, 0, 0],
+                        p=1,
+                    )
+                ],
+                [
+                    dict(
+                        type="RandomRotateTargetAngle",
+                        angle=[3 / 2],
+                        axis="z",
+                        center=[0, 0, 0],
+                        p=1,
+                    )
+                ],
+                [
+                    dict(
+                        type="RandomRotateTargetAngle",
+                        angle=[0],
+                        axis="z",
+                        center=[0, 0, 0],
+                        p=1,
+                    ),
                     dict(type="RandomScale", scale=[0.95, 0.95]),
-                    dict(type="RandomFlip", p=1),
                 ],
                 [
-                    dict(type="RandomScale", scale=[1, 1]),
-                    dict(type="RandomFlip", p=1),
+                    dict(
+                        type="RandomRotateTargetAngle",
+                        angle=[1 / 2],
+                        axis="z",
+                        center=[0, 0, 0],
+                        p=1,
+                    ),
+                    dict(type="RandomScale", scale=[0.95, 0.95]),
                 ],
                 [
+                    dict(
+                        type="RandomRotateTargetAngle",
+                        angle=[1],
+                        axis="z",
+                        center=[0, 0, 0],
+                        p=1,
+                    ),
+                    dict(type="RandomScale", scale=[0.95, 0.95]),
+                ],
+                [
+                    dict(
+                        type="RandomRotateTargetAngle",
+                        angle=[3 / 2],
+                        axis="z",
+                        center=[0, 0, 0],
+                        p=1,
+                    ),
+                    dict(type="RandomScale", scale=[0.95, 0.95]),
+                ],
+                [
+                    dict(
+                        type="RandomRotateTargetAngle",
+                        angle=[0],
+                        axis="z",
+                        center=[0, 0, 0],
+                        p=1,
+                    ),
                     dict(type="RandomScale", scale=[1.05, 1.05]),
-                    dict(type="RandomFlip", p=1),
                 ],
                 [
-                    dict(type="RandomScale", scale=[1.1, 1.1]),
-                    dict(type="RandomFlip", p=1),
+                    dict(
+                        type="RandomRotateTargetAngle",
+                        angle=[1 / 2],
+                        axis="z",
+                        center=[0, 0, 0],
+                        p=1,
+                    ),
+                    dict(type="RandomScale", scale=[1.05, 1.05]),
                 ],
+                [
+                    dict(
+                        type="RandomRotateTargetAngle",
+                        angle=[1],
+                        axis="z",
+                        center=[0, 0, 0],
+                        p=1,
+                    ),
+                    dict(type="RandomScale", scale=[1.05, 1.05]),
+                ],
+                [
+                    dict(
+                        type="RandomRotateTargetAngle",
+                        angle=[3 / 2],
+                        axis="z",
+                        center=[0, 0, 0],
+                        p=1,
+                    ),
+                    dict(type="RandomScale", scale=[1.05, 1.05]),
+                ],
+                [dict(type="RandomFlip", p=1)],
             ],
         ),
     ),
@@ -234,9 +316,3 @@ hooks = [
     dict(type="CheckpointSaver", save_freq=None),
     dict(type="PreciseEvaluator", test_last=False),
 ]
-# test_only = True  # test process
-
-# test_file = "/datasets/navarra-test2/raw/test/04.laz"
-# grid_size=1.0
-# #test = dict(type="EvaluateSSLModel", verbose=True, load_strict=False)
-# test = dict(type="SemSegTester", verbose=True,load_strict=False)

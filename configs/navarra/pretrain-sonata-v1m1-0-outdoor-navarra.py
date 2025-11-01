@@ -15,13 +15,12 @@ enable_amp = True # 控制是否在训练过程中使用混合精度计算
 amp_dtype = "bfloat16"  #enable_amp联动  bfloat16比float32节省50%内存
 evaluate = False
 find_unused_parameters = False
-num_points_per_step = 65536  # 65536
+num_points_per_step = 300  # 65536
 grid_size = 0.1 # 0.02
 dataset_type = "NavarraDataset"
-data_root = "/datasets/pretrain_data/"
-save_path = "/datasets/exp/pretrain_outdoor_01_ep2000_DensityPerturbationViewGenerator"
-weight = "/datasets/exp/pretrain_outdoor_01_ep2000_DensityPerturbationViewGenerator/model/model_last-v1.pth"  # path to model weight
-resume = True  # whether to resume training process
+data_root = "/datasets/navarra-test/"
+save_path = "/datasets/exp/lora_exp/default_ft_full_arg_no_lora"
+
 
 # model settings
 model = dict(
@@ -63,8 +62,8 @@ model = dict(
     head_num_prototypes=4096,
     num_global_view=2,
     num_local_view=4,
-    mask_size_start=0.1,
-    mask_size_base=0.4,
+    mask_size_start=0.4,  # 0.1
+    mask_size_base=1.2,   # 0.4
     mask_size_warmup_ratio=0.05,
     mask_ratio_start=0.3,
     mask_ratio_base=0.7,
@@ -85,8 +84,7 @@ model = dict(
 )
 
 # scheduler settings
-epoch = 2000
-eval_epoch = 200
+epoch = 200
 base_lr = 0.004
 lr_decay = 0.9  # layer-wise lr decay
 
@@ -122,13 +120,13 @@ transform = [
         # type="MultiViewGenerator",
         # global_view_scale=(0.4, 1.0),
         # local_view_scale=(0.1, 0.4),
-        type="DensityPerturbationViewGenerator", # DensityAdaptivePhysicalSizeMultiViewGenerator     PhysicalSizeMultiViewGeneratorBySize
-        global_view_size=(40, 50),  # (40, 50) (15, 45)
-        local_view_size=(20, 30),  # (20, 30) (3, 15)
+        type="PhysicalSizeMultiViewGeneratorBySize",
+        global_view_size=(15, 45),  # (40, 50)
+        local_view_size=(3, 15),  # (20, 30)
+
         view_keys=("coord", "origin_coord", "color"),
         global_view_num=2,
         local_view_num=4,
-
         global_shared_transform=[
             dict(
                 type="RandomColorJitter",
@@ -139,10 +137,10 @@ transform = [
                 p=0.8,
             ),
             dict(type="ChromaticTranslation", p=0.95, ratio=0.05),
-            # dict(type="HeightNormalization",
-            #              base_level="ground",
-            #              max_height=50.0,
-            #              ground_percentile=0.03),
+            dict(type="HeightNormalization",
+                         base_level="ground",
+                         max_height=50.0,
+                         ground_percentile=0.03),
             # dict(type="ChromaticJitter", p=0.95, std=0.05),
             # dict(type="NormalizeColor"),
         ],
