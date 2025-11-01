@@ -9,7 +9,7 @@ empty_cache = False
 enable_amp = True
 num_points_per_step = 65536
 grid_size = 1.0
-weight = "/datasets/exp-1.0/default/model/epoch_5.pth"
+weight = "/datasets/exp/pretrain_outdoor_01_ep2000_Stdv1m2/model/epoch_5.pth"
 
 dataset_type = "NavarraDataset"
 data_root = "/datasets/ft_data_navarra_1-0"
