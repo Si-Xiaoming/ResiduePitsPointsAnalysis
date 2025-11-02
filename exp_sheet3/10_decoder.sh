@@ -1,8 +1,8 @@
 
 CUDA_VISIBLE_DEVICES=0  # which gpu
 NUM_GPU=1
-CONFIG_PATH=configs/exp_sheet1/10_decoder.py
-SAVE_PATH=/datasets/exp_sheet1/10_decoder
+CONFIG_PATH=configs/exp_sheet3/10_decoder.py
+SAVE_PATH=/datasets/exp_sheet3/10_decoder
 export CUDA_VISIBLE_DEVICES=${CUDA_VISIBLE_DEVICES}
 
 export PYTHONPATH=./   # Project path
