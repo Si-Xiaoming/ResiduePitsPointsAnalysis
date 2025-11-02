@@ -113,7 +113,7 @@ data = dict(
 
             dict(
                 type="GridSample",
-                grid_size=2,
+                grid_size=grid_size,
                 hash_type="fnv",
                 mode="train",
                 return_grid_coord=True,
@@ -145,7 +145,7 @@ data = dict(
             ),
             dict(
                 type="GridSample",
-                grid_size=2,
+                grid_size=grid_size,
                 hash_type="fnv",
                 mode="train",
                 return_grid_coord=True,
@@ -181,7 +181,7 @@ test=dict(
         test_cfg=dict(
             voxelize=dict(
                 type="GridSample",
-                grid_size=2,
+                grid_size=grid_size,
                 hash_type="fnv",
                 mode="test",
                 # keys=("coord", "color"),
@@ -228,5 +228,15 @@ test=dict(
     ),
 )
 
-test = dict(type="SemSegTesterLaz", verbose=True)
-weight = "/datasets/exp-0801/model/supervised/model_best_supervised.pth"
+hooks = [
+    dict(
+        type="CheckpointLoader",
+        keywords="module.student.backbone",
+        replacement="module.backbone",
+    ),
+    dict(type="IterationTimer", warmup_iter=2),
+    dict(type="InformationWriter"),
+    dict(type="SemSegEvaluator"),
+    dict(type="CheckpointSaver", save_freq=None),
+    dict(type="PreciseEvaluator", test_last=False),
+]
