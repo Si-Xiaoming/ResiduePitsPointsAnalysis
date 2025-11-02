@@ -241,12 +241,12 @@ def parse_lidar(dataset_root, grid_size, tile_size, has_label, tile_orient):
 def main_preprocess():
     parser = argparse.ArgumentParser()
     parser.add_argument(
-        "--dataset_root", help="Path where raw datasets are located.", default="/datasets/ft_data_navarra_0-5/"
+        "--dataset_root", help="Path where raw datasets are located.", default="/datasets/navarra-percent100/"
     )
     # "/datasets/internship/unused_land_data"
     # "/datasets/ft_data/"
     parser.add_argument(
-        "--grid_size", default=0.5, type=float, help="grid size in meters."
+        "--grid_size", default=0.1, type=float, help="grid size in meters."
     )
     parser.add_argument(
         "--tile_size", default=250, type=float, help="tile size in meters."
