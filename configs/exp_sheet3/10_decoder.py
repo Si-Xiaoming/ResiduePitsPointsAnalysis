@@ -12,7 +12,7 @@ grid_size = 0.1
 weight = "/datasets/exp/pretrain_outdoor_01_ep2000_DensityPerturbationViewGenerator/model/epoch_5.pth"
 
 dataset_type = "NavarraDataset"
-data_root = "/datasets/ft_data_navarra"
+data_root = "/datasets/navarra_percent10"
 # internship\unused_land_data
 # "/datasets/ft_data/"
 epoch = 400 # 修改了!!
