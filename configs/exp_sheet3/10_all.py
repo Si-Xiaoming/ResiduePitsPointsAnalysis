@@ -10,6 +10,7 @@ enable_amp = True
 num_points_per_step = 65536
 grid_size = 0.1
 weight = "/datasets/exp/pretrain_outdoor_01_ep2000_DensityPerturbationViewGenerator/model/epoch_5.pth"
+# weight = " /datasets/exp_sheet3/10_all/model/model_last.pth"
 dataset_type = "NavarraDataset"
 data_root = "/datasets/navarra_percent10"
 
