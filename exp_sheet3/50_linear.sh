@@ -1,8 +1,8 @@
 
 CUDA_VISIBLE_DEVICES=0  # which gpu
 NUM_GPU=1
-CONFIG_PATH=configs/exp_sheet1/50_linear.py
-SAVE_PATH=/datasets/exp_sheet1/50_linear
+CONFIG_PATH=configs/exp_sheet3/50_linear.py
+SAVE_PATH=/datasets/exp_sheet3/50_linear
 export CUDA_VISIBLE_DEVICES=${CUDA_VISIBLE_DEVICES}
 
 export PYTHONPATH=./   # Project path
