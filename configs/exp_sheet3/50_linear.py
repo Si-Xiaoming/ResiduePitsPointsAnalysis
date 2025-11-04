@@ -5,7 +5,7 @@ batch_size = 1  # bs: total bs in all gpus
 num_worker = 1
 mix_prob = 0.8
 clip_grad = 3.0  # ++++
-empty_cache = False
+
 enable_amp = True
 num_points_per_step = 65536
 weight = "/datasets/exp/pretrain_outdoor_01_ep2000_DensityPerturbationViewGenerator/model/epoch_5.pth"

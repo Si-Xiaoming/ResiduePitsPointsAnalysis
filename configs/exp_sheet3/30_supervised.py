@@ -4,7 +4,7 @@ _base_ = ["../_base_/default_runtime.py"]
 batch_size = 1
 num_workers = 0 # shm
 mix_prob = 0.8 #
-empty_cache = False
+
 enable_amp = True
 sample_method = "ball_sample"
 num_points_per_step = 65536
