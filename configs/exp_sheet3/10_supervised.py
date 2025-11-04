@@ -89,7 +89,7 @@ data = dict(
     ],
     train = dict(
         type = dataset_type,
-        split = ("train", "val"),
+        split = ("train"),
         data_root = data_root,
         transform = [
             dict(type="CenterShift", apply_z = True),
@@ -119,7 +119,7 @@ data = dict(
                 return_grid_coord=True,
                 # keys=("coord", "color", "segment"),
             ),
-            dict(type="SphereCrop", sample_rate=0.6, mode="random"),
+            # dict(type="SphereCrop", sample_rate=0.6, mode="random"),
             dict(type="SphereCrop", point_max=num_points_per_step, mode="random"),
             dict(type="CenterShift", apply_z=False),
             # dict(type="NormalizeColor"),
