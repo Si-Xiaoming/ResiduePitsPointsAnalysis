@@ -1,7 +1,7 @@
 _base_ = ["../_base_/default_runtime.py"]
 
 # misc custom settings
-batch_size = 1
+batch_size = 6
 num_workers = 0 # shm
 mix_prob = 0.8 #
 
