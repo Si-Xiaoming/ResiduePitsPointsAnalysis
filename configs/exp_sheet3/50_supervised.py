@@ -17,7 +17,7 @@ grid_size = 0.1
 dataset_type = "NavarraDataset"
 data_root = "/datasets/navarra_percent5"
 epoch = 400 # 修改了!!
-eval_epoch = 20
+eval_epoch = 10
 
 
 # model settings
@@ -89,7 +89,7 @@ data = dict(
     ],
     train = dict(
         type = dataset_type,
-        split = ("train", "val"),
+        split = ("train"),
         data_root = data_root,
         transform = [
             dict(type="CenterShift", apply_z = True),
