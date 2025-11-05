@@ -1,7 +1,7 @@
 _base_ = ["../_base_/default_runtime.py"]
 
 # misc custom settings
-batch_size = 1
+batch_size = 6
 num_workers = 0 # shm
 mix_prob = 0.8 #
 
@@ -17,7 +17,7 @@ grid_size = 0.1
 dataset_type = "NavarraDataset"
 data_root = "/datasets/navarra_percent30"
 epoch = 400 # 修改了!!
-eval_epoch = 20
+eval_epoch = 10
 
 
 # model settings

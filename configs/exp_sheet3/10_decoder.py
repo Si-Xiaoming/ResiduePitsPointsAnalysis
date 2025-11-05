@@ -1,7 +1,7 @@
 _base_ = ["../_base_/default_runtime.py"]
 
 # misc custom setting
-batch_size = 1  # bs: total bs in all gpus
+batch_size = 6  # bs: total bs in all gpus
 num_worker = 1
 mix_prob = 0.8
 clip_grad = 3.0
@@ -13,7 +13,7 @@ weight = "/datasets/exp/pretrain_outdoor_01_ep2000_DensityPerturbationViewGenera
 dataset_type = "NavarraDataset"
 data_root = "/datasets/navarra_percent10"
 epoch = 400 # 修改了!!
-eval_epoch = 20
+eval_epoch = 10
 
 # model settings
 model = dict(
