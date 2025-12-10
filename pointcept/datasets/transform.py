@@ -1139,6 +1139,252 @@ class MultiViewGenerator(object):
 
 
 @TRANSFORMS.register_module()
+class MultiViewGeneratorDesnitySSL(object):
+    def __init__(
+        self,
+        global_view_num=2,
+        global_view_scale=(0.4, 1.0),
+        local_view_num=4,
+        local_view_scale=(0.1, 0.4),
+        global_shared_transform=None,
+        global_transform=None,
+        local_transform=None,
+        max_size=65536,
+        enc2d_max_size=102400,
+        enc2d_scale=(0.8, 1),
+        center_height_scale=(0, 1),
+        shared_global_view=False,
+        view_keys=("coord", "origin_coord", "color", "normal", "correspondence"),
+        static_view_keys=("name", "img_num"),
+
+        # density ssl specific args:
+        enable_density_simulation=True, # whether to enable density simulation
+        student_drop_rate=(0.5, 0.9), # drop rate range for student view
+    ):
+        self.global_view_num = global_view_num
+        self.global_view_scale = global_view_scale
+        self.local_view_num = local_view_num
+        self.local_view_scale = local_view_scale
+        self.global_shared_transform = Compose(global_shared_transform)
+        self.global_transform = Compose(global_transform)
+        self.local_transform = Compose(local_transform)
+        self.max_size = max_size
+        self.enc2d_max_size = enc2d_max_size
+        self.enc2d_scale = enc2d_scale
+        self.center_height_scale = center_height_scale
+        self.shared_global_view = shared_global_view
+        self.view_keys = view_keys
+        self.static_view_keys = static_view_keys
+        assert "coord" in view_keys
+
+        # save density ssl specific args
+        self.enable_density_simulation = enable_density_simulation
+        self.student_drop_rate = student_drop_rate
+
+    def get_view(self, point, center, scale, if_enc2d=False):
+        coord = point["coord"]
+        max_size = min(self.max_size, coord.shape[0])
+        enc2d_max_size = min(self.enc2d_max_size, coord.shape[0])
+        size = 0
+        for _ in range(10):
+            if if_enc2d:
+                size = enc2d_max_size
+            else:
+                size = int(np.random.uniform(*scale) * max_size)
+            if size > 0:
+                break
+        if size == 0:
+            size = max(10, scale[-1] * max_size)
+        assert size > 0
+        index = np.argsort(np.sum(np.square(coord - center), axis=-1))[:size]
+        view = dict(index=index)
+        for key in point.keys():
+            if key in self.view_keys:
+                view[key] = point[key][index]
+            if key in self.static_view_keys:
+                view[key] = point[key]
+        if "index_valid_keys" in point.keys():
+            # inherit index_valid_keys from point
+            view["index_valid_keys"] = point["index_valid_keys"]
+        return view
+
+    @staticmethod
+    def match_point_image(major_view, data_dict):
+        major_correspondence = major_view["correspondence"].transpose(1, 0, 2)
+        correspondence = data_dict["correspondence"].transpose(1, 0, 2)
+        is_all_neg1 = np.any(major_correspondence != np.array([-1, -1]), axis=(1, 2))
+        indices = np.where(is_all_neg1)[0]
+        img_dict = {
+            "images": data_dict["images"][indices],
+            "img_num": indices.shape[0],
+            "major_correspondence": major_correspondence[indices].transpose(1, 0, 2),
+            "correspondence": correspondence[indices].transpose(1, 0, 2),
+        }
+        return img_dict
+    
+    def subsample_view(self, view, drop_rate):
+        """
+        subsample the input view to simulate density variation
+        """
+        # deepcopy the view to aviod modifying the original density views
+        sparse_view = {k: v.copy() if isinstance(v, np.ndarray) else v for k, v in view.items()}
+        num_points = sparse_view["coord"].shape[0]
+
+        # calculate the number of points to keep
+        num_keep = int(num_points  * (1 - drop_rate))
+        if num_keep < 5: num_keep = 5  # at least keep 5 points
+
+        # randomly select points to keep
+        keep_idx = np.random.choice(num_points, num_keep, replace=False)
+
+        # update all keys in the views
+        for key in self.view_keys:
+            if key in sparse_view:
+                sparse_view[key] = sparse_view[key][keep_idx]
+        
+        if "index" in sparse_view:
+            sparse_view["index"] = sparse_view["index"][keep_idx]
+        
+        return sparse_view
+
+
+    def __call__(self, data_dict):
+        coord = data_dict["coord"]
+        point = self.global_shared_transform(copy.deepcopy(data_dict))
+        z_min = coord[:, 2].min()
+        z_max = coord[:, 2].max()
+        z_min_ = z_min + (z_max - z_min) * self.center_height_scale[0]
+        z_max_ = z_min + (z_max - z_min) * self.center_height_scale[1]
+        if "correspondence" not in data_dict.keys():
+            center_mask = np.logical_and(coord[:, 2] >= z_min_, coord[:, 2] <= z_max_)
+            major_center = coord[np.random.choice(np.where(center_mask)[0])]
+            major_view = self.get_view(point, major_center, self.global_view_scale)
+        else:
+            given_index = data_dict["correspondence"].reshape(
+                data_dict["correspondence"].shape[0], -1
+            )
+            given_index = np.all(
+                given_index != np.ones_like(given_index[0]) * -1, axis=1
+            )
+            given_coord = data_dict["coord"][given_index]
+            if given_coord.shape[0] == 0:
+                center_mask = np.logical_and(
+                    coord[:, 2] >= z_min_, coord[:, 2] <= z_max_
+                )
+                major_center = coord[np.random.choice(np.where(center_mask)[0])]
+            else:
+                major_center = np.mean(given_coord, axis=0)
+            major_view = self.get_view(
+                point, major_center, self.global_view_scale, if_enc2d=True
+            )
+            img_dict = self.match_point_image(major_view, data_dict)
+            major_view["correspondence"] = img_dict["major_correspondence"]
+            data_dict["correspondence"] = img_dict["correspondence"]
+            point["correspondence"] = img_dict["correspondence"]
+            data_dict["img_num"] = img_dict["img_num"]
+            data_dict["images"] = img_dict["images"]
+        major_coord = major_view["coord"]
+
+        # get global views: restrict the center of left global view within the major global view
+        if not self.shared_global_view:
+            global_views = [
+                self.get_view(
+                    point=point,
+                    center=major_coord[np.random.randint(major_coord.shape[0])],
+                    scale=self.global_view_scale,
+                )
+                for _ in range(self.global_view_num - 1)
+            ]
+        else:
+            global_views = [
+                {key: value.copy() for key, value in major_view.items()}
+                for _ in range(self.global_view_num - 1)
+            ]
+
+        global_views = [major_view] + global_views
+
+        # get local views: restrict the center of local view within the major global view
+        cover_mask = np.zeros_like(major_view["index"], dtype=bool)
+        local_views = []
+        for i in range(self.local_view_num):
+            if sum(~cover_mask) == 0:
+                # reset cover mask if all points are sampled
+                cover_mask[:] = False
+            local_view = self.get_view(
+                point=data_dict,
+                center=major_coord[np.random.choice(np.where(~cover_mask)[0])],
+                scale=self.local_view_scale,
+            )
+            local_views.append(local_view)
+            cover_mask[np.isin(major_view["index"], local_view["index"])] = True
+
+        # augmentation and concat
+        view_dict = {}
+
+
+        # process global views: Teacher's input
+        for i, global_view in enumerate(global_views):
+            # generate sparse view from the original global view
+            if self.enable_density_simulation:
+                drop_rate = np.random.uniform(*self.student_drop_rate)
+                # generate sparse view
+                sparse_global_view = self.subsample_view(global_view, drop_rate)
+
+                sparse_global_view.pop("index", None)
+                sparse_global_view = self.global_transform(sparse_global_view)
+
+                # store the sparse data into the view dict
+                for key in self.view_keys:
+                    sparse_key = f"sparse_{key}"
+                    if sparse_key in view_dict:
+                        view_dict[sparse_key].append(sparse_global_view[key])
+                    else:
+                        view_dict[sparse_key] = [sparse_global_view[key]]
+
+            # process the original global view (teacher view)
+            global_view.pop("index", None)
+            global_view = self.global_transform(global_view)
+            for key in self.view_keys:
+                if f"global_{key}" in view_dict.keys():
+                    view_dict[f"global_{key}"].append(global_view[key])
+                else:
+                    view_dict[f"global_{key}"] = [global_view[key]]
+
+        # calculate Global Offset
+        view_dict["global_offset"] = np.cumsum(
+            [data.shape[0] for data in view_dict["global_coord"]]
+        )
+        
+        # calculate Sparse Global Offset
+        if self.enable_density_simulation:
+            view_dict["sparse_offset"] = np.cumsum(
+                [data.shape[0] for data in view_dict["sparse_coord"]]
+            )
+        
+
+        for local_view in local_views:
+            local_view.pop("index")
+            local_view = self.local_transform(local_view)
+            for key in self.view_keys:
+                if f"local_{key}" in view_dict.keys():
+                    view_dict[f"local_{key}"].append(local_view[key])
+                else:
+                    view_dict[f"local_{key}"] = [local_view[key]]
+        view_dict["local_offset"] = np.cumsum(
+            [data.shape[0] for data in view_dict["local_coord"]]
+        )
+
+        for key in view_dict.keys():
+            if "offset" not in key:
+                if key in self.static_view_keys:
+                    view_dict[key] = view_dict[key]
+                else:
+                    view_dict[key] = np.concatenate(view_dict[key], axis=0)
+        data_dict.update(view_dict)
+        return data_dict
+
+
+@TRANSFORMS.register_module()
 class InstanceParser(object):
     def __init__(self, segment_ignore_index=(-1, 0, 1), instance_ignore_index=-1):
         self.segment_ignore_index = segment_ignore_index
