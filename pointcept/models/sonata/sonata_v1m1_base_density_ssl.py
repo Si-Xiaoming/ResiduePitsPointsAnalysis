@@ -23,7 +23,6 @@ from pointcept.models.utils import offset2batch, offset2bincount, batch2offset
 from pointcept.utils.comm import get_world_size, all_gather
 from pointcept.utils.scheduler import CosineScheduler
 
-
 class OnlineCluster(nn.Module):
     def __init__(
         self,
