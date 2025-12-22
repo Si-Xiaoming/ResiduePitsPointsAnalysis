@@ -11,7 +11,7 @@ num_points_per_step = 80000
 grid_size = 0.1  #0.1
 gradient_accumulation_steps=1
 enable_wandb = True
-wandb_project = "cept-seg" # custom your project name e.g. Sonata, PTv3
+wandb_project = "residue-seg" # custom your project name e.g. Sonata, PTv3
 wandb_key = "8e059ab5df68865b71cfae546e75a48702a68d65"  # wandb token, default is None. If None, login with `wandb login` in your terminal
 
 

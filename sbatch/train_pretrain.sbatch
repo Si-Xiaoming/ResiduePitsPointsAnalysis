@@ -1,5 +1,5 @@
 #!/bin/bash
-#SBATCH --job-name=0-1_density
+#SBATCH --job-name=1-1-pre
 #SBATCH --mail-type=END,FAIL
 #SBATCH --mail-user=d119918@studenti.polito.it
 #SBATCH --partition=gpu_a40
@@ -18,10 +18,10 @@ export PYTHONPATH=./
 echo "当前工作目录: $(pwd)"
 
 
-CONFIG_PATH=configs/on_sbatch/pretrain-sonata-v1m1-0-outdoor-navarra.py  
+CONFIG_PATH=configs/on_sbatch/pretrain-density.py
 # pretrain-sonata-v1m1-0-outdoor-navarra.py   pretrain-density.py
 
-SAVE_PATH=/home/shsi/outputs/on_sbatch
+SAVE_PATH=/home/shsi/outputs/residue/residue-pretrain
 # 输出job name
 echo "Job Name: $SLURM_JOB_NAME"
 SAVE_PATH=${SAVE_PATH}/${SLURM_JOB_NAME}

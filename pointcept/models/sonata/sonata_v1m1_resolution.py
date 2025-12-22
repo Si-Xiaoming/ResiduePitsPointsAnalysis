@@ -522,15 +522,41 @@ class Sonata(PointModel):
                 # Get Teacher Features at corresponding locations
                 density_target_feat = global_point_.feat[target_idx] # (N_sparse, C)
 
+                k_geo = 16 
+                idx_geo, _ = pointops.knn_query(
+                    k_geo, 
+                    global_point_.coord.float(), global_point_.offset.int(),
+                    global_point_.coord.float(), global_point_.offset.int()
+                )
+                neighbor_coords = global_point_.coord[idx_geo.long()]
+                centered_coords = neighbor_coords - global_point_.coord.unsqueeze(1)
+                
+                # Variance as approximation for curvature/roughness
+                local_curvature = torch.var(centered_coords, dim=1).sum(dim=-1)
+                
+                # Normalize and map to weights
+                c_min = local_curvature.min()
+                c_max = local_curvature.max()
+                norm_curvature = (local_curvature - c_min) / (c_max - c_min + 1e-6)
+                
+                # Weighting: Higher for edges/canals, Lower for flat background
+                geo_weight_map = 0.5 + 0.5 * norm_curvature
+                sample_weight = geo_weight_map[target_idx]
+
+
             # Contrastive Loss (Maximize Cosine Similarity)
             # We want Sparse Feature vector to point in the same direction as Dense Feature vector
             # Normalize
             s_norm = F.normalize(sparse_pred_feat, dim=-1)
             t_norm = F.normalize(density_target_feat, dim=-1)
+
+            cos_sim = (s_norm * t_norm).sum(dim=-1)
+
+            density_loss = -(cos_sim * sample_weight).mean()
             
             # Loss = Negative Cosine Similarity
             # Range: -1 (perfect alignment) to 1 (opposite)
-            density_loss = -(s_norm * t_norm).sum(dim=-1).mean()
+
             
             result_dict["density_loss"] = density_loss
             result_dict["loss"].append(density_loss * self.density_contrast_weight)

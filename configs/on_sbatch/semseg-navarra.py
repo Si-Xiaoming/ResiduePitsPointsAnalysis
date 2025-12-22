@@ -9,20 +9,23 @@ empty_cache = False
 enable_amp = True
 num_points_per_step = 80000
 grid_size = 1.0 #0.1
-weight = "/home/shsi/outputs/on_sbatch/monitor_gs02/model/epoch_10.pth"
 gradient_accumulation_steps=1
 enable_wandb = True
 wandb_project = "cept-seg" # custom your project name e.g. Sonata, PTv3
 wandb_key = "8e059ab5df68865b71cfae546e75a48702a68d65"  # wandb token, default is None. If None, login with `wandb login` in your terminal
+seed=2545321
 
-
+# weight = "/home/shsi/outputs/on_sbatch/0-0_density/model/epoch_10.pth"
+weight = "/home/shsi/outputs/on_sbatch/monitor_gs02/model/epoch_10.pth"
 dataset_type = "NavarraDataset"
-data_root = "/home/shsi/datasets/Point_Cloud/navarra_ft"
-# internship\unused_land_data
-# "/datasets/ft_data/"
-epoch = 400 # converted from 200 epochs with 2x points per step
-eval_epoch = 20
+data_root = "/home/shsi/datasets/Point_Cloud/navarra-10"
+#"/home/shsi/datasets/Point_Cloud/navarra_ft"
+# /home/shsi/datasets/Point_Cloud/navarra-05
+# "/home/shsi/datasets/Point_Cloud/unused_data" 
 
+epoch = 400 # 修改了!!
+eval_epoch = 20
+class_weights = [1.0, 1.0, 3.0, 5.0]
 # model settings
 model = dict(
     type="DefaultSegmentorV2",
@@ -59,11 +62,13 @@ model = dict(
         freeze_encoder=True,
     ),
     criteria=[
-        #dict(type="CrossEntropyLoss", loss_weight=1.0, ignore_index=-1),
-        dict(type="Poly1CrossEntropyLoss", 
-         loss_weight=1.0, 
-         ignore_index=-1, 
-         epsilon=1.0),
+        dict(type="CrossEntropyLoss", loss_weight=1.0, ignore_index=-1), #  , weight=class_weights
+        # dict(type="Poly1CrossEntropyLoss", 
+        #  loss_weight=1.0, 
+        #  ignore_index=-1, 
+        #  epsilon=1.0,
+        #  weight=class_weights), # class_weights   None
+
         dict(type="LovaszLoss", mode="multiclass", loss_weight=1.0, ignore_index=-1),
     ],
     freeze_backbone=False,
@@ -89,7 +94,7 @@ data = dict(
         "ground",
         "vegetation",
         "building",
-        "others",
+        "other",
     ],
     train=dict(
         type=dataset_type,

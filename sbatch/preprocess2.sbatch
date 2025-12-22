@@ -1,5 +1,5 @@
 #!/bin/bash
-#SBATCH --job-name=pointcept_preprocess
+#SBATCH --job-name=pointcept_preprocess2
 #SBATCH --mail-type=END,FAIL
 #SBATCH --mail-user=d119918@studenti.polito.it
 #SBATCH --nodes=1
@@ -33,15 +33,15 @@ export PYTHONPATH=./
 # 4. 设置参数
 # /home/shsi/datasets/Point_Cloud/navarra17
 # /home/shsi/datasets/Point_Cloud/unused_data
-RAW_DATA_DIR="/home/shsi/datasets/Point_Cloud/navarra17"
-GRID_SIZE=1.0
+RAW_DATA_DIR="/home/shsi/datasets/Point_Cloud/unused_data"
+GRID_SIZE=0.5
 TILE_SIZE=250
 HAS_LABEL=True
 TILE_ORIENT=True
 
 # 5. 检查 Python 脚本是否存在  pointcept/datasets/preprocessing/navarra/navarra.py
 # pointcept/datasets/preprocessing/farmland/preprocess_unused_land.py
-SCRIPT_PATH="pointcept/datasets/preprocessing/navarra/navarra.py"
+SCRIPT_PATH="pointcept/datasets/preprocessing/farmland/preprocess_unused_land.py"
 if [ ! -f "$SCRIPT_PATH" ]; then
   echo "错误: Python 脚本 $SCRIPT_PATH 在当前目录下找不到！"
   exit 1

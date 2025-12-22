@@ -19,7 +19,7 @@ find_unused_parameters = False
 num_points_per_step = 80000  # 65536
 grid_size = 0.2 
 dataset_type = "NavarraDataset"
-data_root = "/home/shsi/datasets/Point_Cloud/navarra17"
+data_root = "/home/shsi/datasets/Point_Cloud/navarra-01/"  # your dataset root path
 sync_bn=False  # 启用跨多个GPU的同步批归一化，有助于稳定训练过程，特别是在小批量大小下
 
 
@@ -137,7 +137,7 @@ transform = [
         type="MultiViewGeneratorDensity",
 
         enable_density_simulation=True,
-        student_drop_rate=(0.5, 0.8),
+        student_drop_rate=(0.3, 0.8),
 
         view_keys=("coord", "origin_coord", "color"),
         global_view_num=2,
