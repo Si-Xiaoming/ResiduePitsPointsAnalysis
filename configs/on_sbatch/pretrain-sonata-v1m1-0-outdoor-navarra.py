@@ -7,6 +7,7 @@ _base_ = ["../_base_/default_runtime.py"]
 
 # misc custom setting
 batch_size = 1  # bs: total bs in all gpus
+gradient_accumulation_steps=4
 num_worker = 16
 mix_prob = 0  # 混合增强的应用概率，控制在训练过程中是否应用点云混合增强技术
 clip_grad = 3.0 # 梯度裁剪的阈值参数，用于防止训练过程中的梯度爆炸问题
@@ -15,15 +16,15 @@ enable_amp = True # 控制是否在训练过程中使用混合精度计算
 amp_dtype = "bfloat16"  #enable_amp联动  bfloat16比float32节省50%内存
 evaluate = False
 find_unused_parameters = False
-num_points_per_step = 65536  # 65536
-grid_size = 0.1 # 0.02
+num_points_per_step = 80000  # 65536
+grid_size = 0.2 
 dataset_type = "NavarraDataset"
 data_root = "/home/shsi/datasets/Point_Cloud/navarra17"
 sync_bn=False  # 启用跨多个GPU的同步批归一化，有助于稳定训练过程，特别是在小批量大小下
 
 
-enable_wandb = False
-wandb_project = "pointcept"  # custom your project name e.g. Sonata, PTv3
+enable_wandb = True
+wandb_project = "pointcept" # custom your project name e.g. Sonata, PTv3
 wandb_key = "8e059ab5df68865b71cfae546e75a48702a68d65"  # wandb token, default is None. If None, login with `wandb login` in your terminal
 
 # model settings
@@ -81,10 +82,15 @@ model = dict(
 
 
 
-    density_loss_weight=0.1,
+    # density_loss_weight=0.01,
     mask_loss_weight=2 / 8,
     roll_mask_loss_weight=2 / 8,
     unmask_loss_weight=4 / 8,
+
+
+    density_start=0.005,
+    density_base=0.005,
+    density_final=0.0001,
 
 
 
@@ -97,8 +103,9 @@ model = dict(
 
 # scheduler settings
 epoch = 200
-base_lr = 0.004
-lr_decay = 0.9  # layer-wise lr decay
+base_lr = 0.0005 # 0.004
+lr_decay = 0.75 # 0.9  # layer-wise lr decay
+pct_start=0.1
 
 base_wd = 0.04  # wd scheduler enable in hooks
 final_wd = 0.2  # wd scheduler enable in hooks

@@ -31,14 +31,14 @@ echo "当前工作目录: $(pwd)"
 export PYTHONPATH=./
 
 # 4. 设置参数
-RAW_DATA_DIR="/home/shsi/datasets/Point_Cloud/navarra17"
+RAW_DATA_DIR="/home/shsi/datasets/Point_Cloud/unused_data"
 GRID_SIZE=0.1
 TILE_SIZE=250
 HAS_LABEL=True
-TILE_ORIENT=False
+TILE_ORIENT=True
 
-# 5. 检查 Python 脚本是否存在
-SCRIPT_PATH="pointcept/datasets/preprocessing/navarra/navarra.py"
+# 5. 检查 Python 脚本是否存在  pointcept/datasets/preprocessing/navarra/navarra.py
+SCRIPT_PATH="pointcept/datasets/preprocessing/farmland/preprocess_unused_land.py"
 if [ ! -f "$SCRIPT_PATH" ]; then
   echo "错误: Python 脚本 $SCRIPT_PATH 在当前目录下找不到！"
   exit 1

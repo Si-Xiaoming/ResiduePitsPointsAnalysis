@@ -16,3 +16,4 @@ outputs/
 .VSCodeCounter
 
 libs/sonata-main
+sbatch/logs/

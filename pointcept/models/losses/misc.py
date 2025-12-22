@@ -40,6 +40,63 @@ class CrossEntropyLoss(nn.Module):
 
 
 @LOSSES.register_module()
+class Poly1CrossEntropyLoss(nn.Module):
+    def __init__(
+        self,
+        weight=None,
+        size_average=None,
+        reduce=None,
+        reduction="mean",
+        label_smoothing=0.0,
+        loss_weight=1.0,
+        ignore_index=-1,
+        epsilon=1.0,  # Poly loss's epsilon parameter
+    ):
+        super(Poly1CrossEntropyLoss, self).__init__()
+        # 保持对 weight 的处理逻辑
+        self.weight = torch.tensor(weight).cuda() if weight is not None else None
+        
+        self.loss_weight = loss_weight
+        self.epsilon = epsilon
+        self.reduction = reduction
+        self.ignore_index = ignore_index
+        self.label_smoothing = label_smoothing
+
+    def forward(self, pred, target):
+        # 1. 计算基础的 Cross Entropy Loss，强制 reduction='none' 以便获取逐点 loss
+        ce_loss = F.cross_entropy(
+            pred,
+            target,
+            weight=self.weight,
+            ignore_index=self.ignore_index,
+            label_smoothing=self.label_smoothing,
+            reduction='none' 
+        )
+
+        # 2. 计算 Pt (预测为正确类别的概率)
+        # ce_loss = -log(Pt)  =>  Pt = exp(-ce_loss)
+        pt = torch.exp(-ce_loss)
+
+        # 3. Poly-1 Loss 公式: L = CE + epsilon * (1 - Pt)
+        # 注意：对于 ignore_index 的点，ce_loss 为 0，pt 为 1，poly_term 为 0，因此不会产生梯度，逻辑是正确的
+        poly_loss = ce_loss + self.epsilon * (1 - pt)
+
+        # 4. 根据 reduction 参数进行规约
+        if self.reduction == 'mean':
+            # 需要注意：如果有 ignore_index，直接 mean() 会除以所有像素数（包括忽略的）。
+            # 标准 nn.CrossEntropyLoss 会只除以有效像素数。
+            # 这里为了精确对齐，建议使用有效掩码计算 mean
+            valid_mask = (target != self.ignore_index).float()
+            loss = (poly_loss * valid_mask).sum() / (valid_mask.sum() + 1e-6)
+        elif self.reduction == 'sum':
+            loss = poly_loss.sum()
+        else:
+            loss = poly_loss
+
+        return loss * self.loss_weight
+
+
+@LOSSES.register_module()
 class SmoothCELoss(nn.Module):
     def __init__(self, smoothing_ratio=0.1):
         super(SmoothCELoss, self).__init__()

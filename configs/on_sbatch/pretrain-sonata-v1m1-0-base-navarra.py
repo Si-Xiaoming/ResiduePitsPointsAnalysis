@@ -15,15 +15,15 @@ enable_amp = True
 amp_dtype = "bfloat16"
 evaluate = False
 find_unused_parameters = False
-num_points_per_step = 65536  # 65536
-grid_size = 0.1 # 0.02
+num_points_per_step = 80000  # 65536
+grid_size = 0.2 
 dataset_type = "NavarraDataset"
 data_root = "/home/shsi/datasets/Point_Cloud/navarra17"
 sync_bn=True  # 启用跨多个GPU的同步批归一化，有助于稳定训练过程，特别是在小批量大小下
 
 # model settings
 model = dict(
-    type="Sonata-v1m1",
+    type="Sonata-v1m1-Resolution",
     # backbone - student & teacher
     backbone=dict(
         type="PT-v3m2",

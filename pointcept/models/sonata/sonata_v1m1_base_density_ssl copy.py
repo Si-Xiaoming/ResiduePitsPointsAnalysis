@@ -1,0 +1,698 @@
+from itertools import chain
+from packaging import version
+from functools import partial
+import torch
+import torch.nn as nn
+import torch.nn.functional as F
+import torch.distributed as dist
+import torch_scatter
+from timm.layers import trunc_normal_
+
+import pointops
+from pointcept.models.utils.structure import Point
+from pointcept.models.builder import MODELS, build_model
+from pointcept.models.modules import PointModel
+from pointcept.models.utils import offset2batch, offset2bincount, batch2offset
+from pointcept.utils.comm import get_world_size, all_gather
+from pointcept.utils.scheduler import CosineScheduler
+
+
+
+
+class OnlineCluster(nn.Module):
+    def __init__(
+        self,
+        in_channels,
+        hidden_channels=4096,
+        embed_channels=512,
+        num_prototypes=4096,
+    ):
+        super().__init__()
+        self.mlp = nn.Sequential(
+            nn.Linear(in_channels, hidden_channels),
+            nn.GELU(),
+            nn.Linear(hidden_channels, embed_channels),
+        )
+        self.apply(self._init_weights)
+        if version.parse(torch.__version__) >= version.parse("2.1.0"):
+            self.prototype = torch.nn.utils.parametrizations.weight_norm(
+                nn.Linear(embed_channels, num_prototypes, bias=False)
+            )
+            self.prototype.parametrizations.weight.original0.data.fill_(1)
+            self.prototype.parametrizations.weight.original0.requires_grad = False
+
+        else:
+            self.prototype = torch.nn.utils.weight_norm(
+                nn.Linear(embed_channels, num_prototypes, bias=False)
+            )
+            self.prototype.weight_g.data.fill_(1)
+            self.prototype.weight_g.requires_grad = False
+
+    @staticmethod
+    def _init_weights(m):
+        if isinstance(m, nn.Linear):
+            trunc_normal_(m.weight, std=0.02)
+            if isinstance(m, nn.Linear) and m.bias is not None:
+                nn.init.constant_(m.bias, 0)
+
+    def forward(self, feat):
+        feat = self.mlp(feat)
+        eps = 1e-6 if feat.dtype == torch.float16 else 1e-12
+        feat = nn.functional.normalize(feat, dim=-1, p=2, eps=eps)
+        similarity = self.prototype(feat)
+        return similarity
+
+class DeepProjectionHead(nn.Module):
+    def __init__(self, in_channels, hidden_channels, out_channels, num_layers=3):
+        """
+        深层投影头：用于解耦 Backbone 和 Density 任务
+        Args:
+            in_channels: Backbone 输出维度 (e.g., 1088 - PTv3 输出)
+            hidden_channels: 隐藏层维度 (e.g., 4096 - 需要足够宽)
+            out_channels: 输出维度 (e.g., 4096 - 对应 Prototypes 数量)
+            num_layers: MLP 层数，建议 3 或 4
+        """
+        super().__init__()
+        layers = []
+        
+        # --- 第一层 ---
+        layers.append(nn.Linear(in_channels, hidden_channels))
+        layers.append(nn.LayerNorm(hidden_channels)) # [核心] 必须用 LayerNorm
+        layers.append(nn.GELU()) 
+        
+        # --- 中间层 (增加深度) ---
+        for _ in range(num_layers - 2):
+            layers.append(nn.Linear(hidden_channels, hidden_channels))
+            layers.append(nn.LayerNorm(hidden_channels))
+            layers.append(nn.GELU())
+            
+        # --- 输出层 ---
+        layers.append(nn.Linear(hidden_channels, out_channels))
+        
+        self.mlp = nn.Sequential(*layers)
+
+    def forward(self, x):
+        return self.mlp(x)
+
+
+@MODELS.register_module("Sonata-v1m1_density_ssl")
+class Sonata(PointModel):
+    def __init__(
+        self,
+        backbone,
+        head_in_channels,
+        head_hidden_channels=4096,
+        head_embed_channels=512,
+        head_num_prototypes=4096,
+        teacher_custom=None,
+        num_global_view=2,
+        num_local_view=4,
+        mask_size_start=0.1,
+        mask_size_base=0.4,
+        mask_size_warmup_ratio=0.05,
+        mask_ratio_start=0.3,
+        mask_ratio_base=0.7,
+        mask_ratio_warmup_ratio=0.05,
+        mask_jitter=None,
+        teacher_temp_start=0.04,
+        teacher_temp_base=0.07,
+        teacher_temp_warmup_ratio=0.05,
+        student_temp=0.1,
+        mask_loss_weight=2 / 8,
+        roll_mask_loss_weight=2 / 8,
+        unmask_loss_weight=4 / 8,
+        momentum_base=0.996,
+        momentum_final=1,
+        match_max_k=8,
+        match_max_r=0.08,
+        up_cast_level=2,
+
+        # density ssl specific parameters
+        density_start=0.1,
+        density_base=0.1,
+        density_final=0.0,
+    ):
+        super(Sonata, self).__init__()
+
+        self.head_in_channels = head_in_channels
+        self.head_hidden_channels = head_hidden_channels
+        self.head_embed_channels = head_embed_channels
+        self.head_num_prototypes = head_num_prototypes
+
+        self.mask_loss_weight = mask_loss_weight
+        self.roll_mask_loss_weight = roll_mask_loss_weight
+        self.unmask_loss_weight = unmask_loss_weight
+
+        self.num_global_view = num_global_view
+        self.num_local_view = num_local_view
+
+        # masking and scheduler
+        self.mask_size = mask_size_start
+        self.mask_size_start = mask_size_start
+        self.mask_size_base = mask_size_base
+        self.mask_size_warmup_ratio = mask_size_warmup_ratio
+        self.mask_size_scheduler = None
+
+        self.mask_ratio = mask_ratio_start
+        self.mask_ratio_start = mask_ratio_start
+        self.mask_ratio_base = mask_ratio_base
+        self.mask_ratio_warmup_ratio = mask_ratio_warmup_ratio
+        self.mask_ratio_scheduler = None
+
+        self.mask_jitter = mask_jitter
+
+        # temperature and scheduler
+        self.teacher_temp = teacher_temp_start
+        self.teacher_temp_start = teacher_temp_start
+        self.teacher_temp_base = teacher_temp_base
+        self.teacher_temp_warmup_ratio = teacher_temp_warmup_ratio
+        self.teacher_temp_scheduler = None
+        self.student_temp = student_temp
+
+        # momentum and scheduler
+        self.momentum = momentum_base
+        self.momentum_base = momentum_base
+        self.momentum_final = momentum_final
+        self.momentum_scheduler = None
+        
+        # Density Scheduler
+        self.density_start = density_start
+        self.density_base = density_base
+        self.density_final = density_final
+        self.density_weight_scheduler = None
+        self.density_loss_weight = density_start # Init value
+
+        # dynamic matching
+        self.match_max_k = match_max_k
+        self.match_max_r = match_max_r
+
+        # up cast level
+        self.up_cast_level = up_cast_level
+
+        # one of unmask, mask, roll mask loss enable
+        assert unmask_loss_weight + mask_loss_weight + roll_mask_loss_weight > 0
+        # roll mask loss need more than one global view
+        assert num_global_view > 1 or roll_mask_loss_weight == 0
+        # current roll mask only support two global views
+        assert num_global_view == 1 or num_global_view == 2
+
+        student_model_dict = dict()
+        teacher_model_dict = dict()
+        if teacher_custom is None:
+            teacher_custom = {}
+        
+        # Build Backbones
+        student_backbone = build_model(backbone)
+        # turn off parameters like drop path for teacher model
+        backbone.update(teacher_custom)
+        teacher_backbone = build_model(backbone)
+        
+        student_model_dict["backbone"] = student_backbone
+        teacher_model_dict["backbone"] = teacher_backbone
+
+        # Build Main Heads (OnlineCluster)
+        head = partial(
+            OnlineCluster,
+            in_channels=head_in_channels,
+            hidden_channels=head_hidden_channels,
+            embed_channels=head_embed_channels,
+            num_prototypes=head_num_prototypes,
+        )
+        if self.mask_loss_weight > 0 or self.roll_mask_loss_weight > 0:
+            student_model_dict["mask_head"] = head()
+            teacher_model_dict["mask_head"] = head()
+        if self.unmask_loss_weight > 0:
+            student_model_dict["unmask_head"] = head()
+            teacher_model_dict["unmask_head"] = head()
+        
+        # Build Density Head (Deep Projection Head) - Only for Student!
+        if self.density_start > 0 or self.density_base > 0:
+            # [关键修改]
+            # 1. 输入是 head_in_channels (Backbone原始输出)
+            # 2. 输出是 head_num_prototypes (对齐 Teacher 的 Mask Head 输出)
+            self.density_head = DeepProjectionHead(
+                in_channels=self.head_in_channels, 
+                hidden_channels=self.head_hidden_channels, 
+                out_channels=self.head_num_prototypes,     
+                num_layers=3  
+            )
+            student_model_dict["density_head"] = self.density_head
+            # 注意：Teacher 不需要 density_head
+
+        self.student = nn.ModuleDict(student_model_dict)
+        self.teacher = nn.ModuleDict(teacher_model_dict)
+        
+        # Initialize Teacher with Student weights
+        for k, v in self.student.items():
+            if k in self.teacher:
+                self.teacher[k].load_state_dict(self.student[k].state_dict())
+        for p in self.teacher.parameters():
+            p.requires_grad = False
+
+    def before_train(self):
+        # make ModelHook after CheckPointLoader
+        total_steps = self.trainer.cfg.scheduler.total_steps
+        curr_step = self.trainer.start_epoch * len(self.trainer.train_loader)
+        
+        # mask size scheduler
+        self.mask_size_scheduler = CosineScheduler(
+            start_value=self.mask_size_start,
+            base_value=self.mask_size_base,
+            final_value=self.mask_size_base,
+            warmup_iters=int(total_steps * self.mask_size_warmup_ratio),
+            total_iters=total_steps,
+        )
+        self.mask_size_scheduler.iter = curr_step
+
+        # mask ratio scheduler
+        self.mask_ratio_scheduler = CosineScheduler(
+            start_value=self.mask_ratio_start,
+            base_value=self.mask_ratio_base,
+            final_value=self.mask_ratio_base,
+            warmup_iters=int(total_steps * self.mask_ratio_warmup_ratio),
+            total_iters=total_steps,
+        )
+        self.mask_ratio_scheduler.iter = curr_step
+
+        # teacher temperature scheduler
+        self.teacher_temp_scheduler = CosineScheduler(
+            start_value=self.teacher_temp_start,
+            base_value=self.teacher_temp_base,
+            final_value=self.teacher_temp_base,
+            warmup_iters=int(total_steps * self.teacher_temp_warmup_ratio),
+            total_iters=total_steps,
+        )
+        self.teacher_temp_scheduler.iter = curr_step
+
+        # momentum scheduler
+        self.momentum_scheduler = CosineScheduler(
+            base_value=self.momentum_base,
+            final_value=self.momentum_final,
+            total_iters=total_steps,
+        )
+        self.momentum_scheduler.iter = curr_step
+
+        # Density Weight Scheduler
+        # 建议：如果希望后期彻底去几何化，final_value 设为 0.0
+        self.density_weight_scheduler = CosineScheduler(
+            start_value=self.density_start,   
+            base_value=self.density_base,     
+            final_value=self.density_final,   
+            total_iters=total_steps,
+            warmup_iters=0,
+        )
+        self.density_weight_scheduler.iter = curr_step
+
+    def before_step(self):
+        # update parameters from schedulers
+        self.mask_size = self.mask_size_scheduler.step()
+        self.mask_ratio = self.mask_ratio_scheduler.step()
+        self.teacher_temp = self.teacher_temp_scheduler.step()
+        self.momentum = self.momentum_scheduler.step()
+
+        self.density_loss_weight = self.density_weight_scheduler.step()
+
+        if self.trainer.writer is not None:
+            self.trainer.writer.add_scalar(
+                "params/mask_size", self.mask_size, self.mask_size_scheduler.iter
+            )
+            self.trainer.writer.add_scalar(
+                "params/mask_ratio", self.mask_ratio, self.mask_ratio_scheduler.iter
+            )
+            self.trainer.writer.add_scalar(
+                "params/teacher_temp", self.teacher_temp, self.teacher_temp_scheduler.iter
+            )
+            self.trainer.writer.add_scalar(
+                "params/momentum", self.momentum, self.momentum_scheduler.iter
+            )
+            self.trainer.writer.add_scalar(
+                "params/density_loss_weight", self.density_loss_weight, self.density_weight_scheduler.iter
+            )
+
+    def after_step(self):
+        # EMA update teacher
+        with torch.no_grad():
+            m = self.momentum
+            student_param_list = list(self.student.parameters())
+            teacher_param_list = list(self.teacher.parameters())
+            # 注意：如果 Student 有 density_head 但 Teacher 没有，参数列表长度不一致
+            # 因此不能直接 zip 全部 parameters。Sonata 源码通常会处理 key matching。
+            # 但这里我们简化处理：只更新 Teacher 存在的 key
+            
+            # 手动遍历更新 (更安全)
+            for key in self.teacher.keys():
+                if key in self.student:
+                    t_params = list(self.teacher[key].parameters())
+                    s_params = list(self.student[key].parameters())
+                    if len(t_params) > 0:
+                         torch._foreach_mul_(t_params, m)
+                         torch._foreach_add_(t_params, s_params, alpha=1 - m)
+
+    @staticmethod
+    def sinkhorn_knopp(feat, temp, num_iter=3):
+        feat = feat.float()
+        q = torch.exp(feat / temp).t()
+        n = sum(all_gather(q.shape[1]))  # number of samples to assign
+        k = q.shape[0]  # number of prototypes
+
+        # make the matrix sums to 1
+        sum_q = q.sum()
+        if get_world_size() > 1:
+            dist.all_reduce(sum_q)
+        q = q / sum_q
+
+        for i in range(num_iter):
+            # normalize each row
+            q_row_sum = q.sum(dim=1, keepdim=True)
+            if get_world_size() > 1:
+                dist.all_reduce(q_row_sum)
+            q = q / q_row_sum / k
+
+            # normalize each column
+            q = q / q.sum(dim=0, keepdim=True) / n
+
+        q *= n 
+        return q.t()
+
+    def generate_mask(self, coord, offset):
+        batch = offset2batch(offset)
+        mask_size = self.mask_size
+        mask_ratio = self.mask_ratio
+
+        min_coord = torch_scatter.segment_coo(coord, batch, reduce="min")
+        grid_coord = ((coord - min_coord[batch]) // mask_size).int()
+        grid_coord = torch.cat([batch.unsqueeze(-1), grid_coord], dim=-1)
+        unique, point_cluster, counts = torch.unique(
+            grid_coord, dim=0, sorted=True, return_inverse=True, return_counts=True
+        )
+        patch_num = unique.shape[0]
+        mask_patch_num = int(patch_num * mask_ratio)
+        patch_index = torch.randperm(patch_num, device=coord.device)
+        mask_patch_index = patch_index[:mask_patch_num]
+        point_mask = torch.isin(point_cluster, mask_patch_index)
+        return point_mask, point_cluster
+
+    @torch.no_grad()
+    def match_neighbour(self, view1_coord, view1_offset, view2_coord, view2_offset):
+        index2, distance = pointops.knn_query(
+            1,
+            view2_coord.float(),
+            view2_offset.int(),
+            view1_coord.float(),
+            view1_offset.int(),
+        )
+        index1 = torch.arange(
+            index2.shape[0], device=index2.device, dtype=torch.long
+        ).unsqueeze(-1)
+        index = torch.cat([index1, index2], dim=-1)[
+            distance.squeeze(-1) < self.match_max_r
+        ]
+        return index
+
+    @torch.no_grad()
+    def roll_point(self, point):
+        n = self.num_global_view
+        bs = len(point.offset) // self.num_global_view
+        data_dict = {}
+        for key in point.keys():
+            if key in ["feat", "coord", "origin_coord", "batch"]:
+                value = point[key].split(offset2bincount(point.offset).tolist())
+                value = chain(*[value[n * b : n * (b + 1)][::-1] for b in range(bs)])
+                if key == "batch":
+                    value = [torch.ones_like(v) * i for i, v in enumerate(value)]
+                data_dict[key] = torch.cat(list(value), dim=0)
+        return Point(data_dict)
+
+    def up_cast(self, point):
+        for _ in range(self.up_cast_level):
+            assert "pooling_parent" in point.keys()
+            assert "pooling_inverse" in point.keys()
+            parent = point.pop("pooling_parent")
+            inverse = point.pop("pooling_inverse")
+            parent.feat = torch.cat([parent.feat, point.feat[inverse]], dim=-1)
+            point = parent
+        return point
+
+    def forward(self, data_dict, return_point=False):
+        if return_point:
+            point = self.teacher.backbone(data_dict)
+            for _ in range(self.up_cast_level):
+                assert "pooling_parent" in point.keys()
+                assert "pooling_inverse" in point.keys()
+                parent = point.pop("pooling_parent")
+                inverse = point.pop("pooling_inverse")
+                parent.feat = torch.cat([parent.feat, point.feat[inverse]], dim=-1)
+                point = parent
+            return dict(point=point)
+
+        # prepare global_point, mask_global_point, local_point
+        with torch.no_grad():
+            # global_point & masking
+            global_point = Point(
+                feat=data_dict["global_feat"],
+                coord=data_dict["global_coord"],
+                origin_coord=data_dict["global_origin_coord"],
+                offset=data_dict["global_offset"],
+                grid_size=data_dict["grid_size"][0],
+            )
+            global_mask, global_cluster = self.generate_mask(
+                global_point.coord, global_point.offset
+            )
+            mask_global_coord = global_point.coord.clone().detach()
+            if self.mask_jitter is not None:
+                mask_global_coord[global_mask] += torch.clip(
+                    torch.randn_like(mask_global_coord[global_mask]).mul(
+                        self.mask_jitter
+                    ),
+                    max=self.mask_jitter * 2,
+                )
+
+            mask_global_point = Point(
+                feat=data_dict["global_feat"],
+                coord=mask_global_coord,
+                origin_coord=data_dict["global_origin_coord"],
+                mask=global_mask,
+                offset=data_dict["global_offset"],
+                grid_size=data_dict["grid_size"][0],
+            )
+
+            local_point = Point(
+                feat=data_dict["local_feat"],
+                coord=data_dict["local_coord"],
+                origin_coord=data_dict["local_origin_coord"],
+                offset=data_dict["local_offset"],
+                grid_size=data_dict["grid_size"][0],
+            )
+
+            # prepare the sparse data 
+            if self.density_loss_weight > 0 and "sparse_coord" in data_dict:
+                sparse_point = Point(
+                    feat=data_dict["sparse_feat"],
+                    coord=data_dict["sparse_coord"], 
+                    origin_coord=data_dict["sparse_origin_coord"] if "sparse_origin_coord" in data_dict else data_dict["sparse_coord"],
+                    offset=data_dict["sparse_offset"],
+                    grid_size=data_dict["grid_size"][0],
+                )
+
+
+        # create result dictionary
+        result_dict = dict(loss=[])
+        
+        # --- Teacher Forward ---
+        # teacher backbone forward (shared with mask and unmask)
+        global_point_ = self.teacher.backbone(global_point)
+        global_point_ = self.up_cast(global_point_)
+        global_feat = global_point_.feat 
+        # global_feat is the "Truth" from backbone
+
+        # 1. Masking Task (Main Task)
+        if self.mask_loss_weight > 0 or self.roll_mask_loss_weight > 0:
+            # teacher head forward
+            with torch.no_grad():
+                # [关键] Teacher 使用 Mask Head 生成语义目标
+                global_mask_feat = self.teacher.mask_head(global_feat)
+                
+            # student forward
+            mask_global_point_ = self.student.backbone(mask_global_point)
+            mask_global_point_ = self.up_cast(mask_global_point_)
+            mask_pred_sim = self.student.mask_head(mask_global_point_.feat)
+
+            if self.mask_loss_weight > 0:
+                with torch.no_grad():
+                    match_index = self.match_neighbour(
+                        mask_global_point_.origin_coord,
+                        mask_global_point_.offset,
+                        global_point_.origin_coord,
+                        global_point_.offset,
+                    )
+                    # teacher target generation
+                    mask_target_sim = self.sinkhorn_knopp(
+                        global_mask_feat[match_index[:, 1]], # Use head output
+                        self.teacher_temp,
+                    )
+
+                mask_loss = -torch.sum(
+                    mask_target_sim
+                    * F.log_softmax(
+                        mask_pred_sim[match_index[:, 0]] / self.student_temp, dim=-1
+                    ),
+                    dim=-1,
+                )
+                mask_loss = torch_scatter.segment_coo(
+                    mask_loss,
+                    index=mask_global_point_.batch[match_index[:, 0]],
+                    reduce="mean",
+                ).mean()
+                result_dict["mask_loss"] = mask_loss
+                result_dict["loss"].append(mask_loss * self.mask_loss_weight)
+
+            if self.roll_mask_loss_weight > 0:
+                roll_global_point_ = self.roll_point(global_point_)
+                with torch.no_grad():
+                    # Note: We need to roll the features as well if we computed them
+                    # But easiest is to use coordinates to find match and use global_mask_feat
+                    match_index = self.match_neighbour(
+                        mask_global_point_.origin_coord,
+                        mask_global_point_.offset,
+                        roll_global_point_.origin_coord,
+                        roll_global_point_.offset,
+                    )
+                    
+                    # We need the features corresponding to roll_global_point_
+                    # roll_point function shuffles the points order in batch
+                    # So we need to carefully index global_mask_feat or recompute
+                    # Since roll_point implements a specific flip strategy, we re-use global_mask_feat
+                    # by understanding the index mapping. 
+                    # Simpler way: Teacher features are already computed, just use match_index 
+                    # which links Student(Masked) to Teacher(Rolled Global).
+                    
+                    # Wait, match_neighbour uses coordinates. 
+                    # roll_global_point_ contains rolled coordinates.
+                    # global_point_ contains original coordinates.
+                    # We need features for roll_global_point_. 
+                    # Re-computing head for rolled features is safest if structure allows.
+                    # But roll_point assumes feats are rolled.
+                    
+                    # For simplicity/correctness with existing code flow:
+                    # roll_global_point_ already has rolled features from global_point_.feat
+                    # So we just pass it to head.
+                    roll_global_feat_head = self.teacher.mask_head(roll_global_point_.feat)
+                    
+                    roll_mask_target_sim = self.sinkhorn_knopp(
+                        roll_global_feat_head[match_index[:, 1]],
+                        self.teacher_temp,
+                    )
+
+                roll_mask_loss = -torch.sum(
+                    roll_mask_target_sim
+                    * F.log_softmax(
+                        mask_pred_sim[match_index[:, 0]] / self.student_temp, dim=-1
+                    ),
+                    dim=-1,
+                )
+                roll_mask_loss = torch_scatter.segment_coo(
+                    roll_mask_loss,
+                    index=mask_global_point_.batch[match_index[:, 0]],
+                    reduce="mean",
+                ).mean()
+                result_dict["roll_mask_loss"] = roll_mask_loss
+                result_dict["loss"].append(roll_mask_loss * self.roll_mask_loss_weight)
+        
+        # 2. Density SSL Task (Deep Decoupled)
+        if self.density_loss_weight > 0 and "sparse_coord" in data_dict:
+            # Student Forward
+            sparse_point_ = self.student.backbone(sparse_point)
+            sparse_point_ = self.up_cast(sparse_point_)
+            
+            # [关键] 使用独立的 Deep Density Head 进行预测
+            # 输入: Backbone Feat (N_sparse, C_in)
+            # 输出: Prototypes Logits (N_sparse, N_proto)
+            sparse_pred_logits = self.student.density_head(sparse_point_.feat)
+
+            # Feature Affinity / Interpolation
+            # 我们需要比较 Student Sparse 预测与 Teacher Dense 目标
+            # 方法：将 Sparse 预测插值到 Dense 位置
+            with torch.no_grad():
+                idx, distance = pointops.knn_query(
+                    3, # k=3 
+                    sparse_point_.coord.float(), sparse_point_.offset.int(), # Support (Sparse)
+                    global_point_.coord.float(), global_point_.offset.int()  # Query (Dense)
+                )
+                dist_recip = 1.0 / (distance + 1e-8)
+                norm = torch.sum(dist_recip, dim=1, keepdim=True)
+                weight = dist_recip / norm
+
+                # [关键] Teacher Target 生成
+                # Teacher 使用 Mask Head (主任务头) 生成目标! 
+                # 这样 Student Density Head 就必须学会预测"语义相关的分布"
+                # global_mask_feat 已经在上面计算过了 = self.teacher.mask_head(global_feat)
+                
+                density_target_sim = self.sinkhorn_knopp(
+                    global_mask_feat, # (N_dense, N_proto)
+                    self.teacher_temp
+                )
+            
+            # Interpolate Student Logits to Dense locations
+            dense_interpolated_pred = 0
+            for i in range(3): 
+                dense_interpolated_pred += sparse_pred_logits[idx[:, i].long()] * weight[:, i].unsqueeze(-1)
+
+            # Compute Loss
+            density_loss = -torch.sum(
+                density_target_sim
+                * F.log_softmax(dense_interpolated_pred / self.student_temp, dim=-1),
+                dim=-1
+            ).mean()
+            
+            result_dict["density_loss"] = density_loss
+            #result_dict["loss"].append(density_loss * self.density_loss_weight)
+
+
+        # 3. Unmasking Task
+        if self.unmask_loss_weight > 0:
+            with torch.no_grad():
+                global_unmask_feat = self.teacher.unmask_head(global_feat)
+            
+            local_point_ = self.student.backbone(local_point)
+            local_point_ = self.up_cast(local_point_)
+            unmask_pred_sim = self.student.unmask_head(local_point_.feat)
+            
+            with torch.no_grad():
+                principal_view_mask = global_point_.batch % self.num_global_view == 0
+                principal_view_batch = (
+                    global_point_.batch[principal_view_mask] // self.num_global_view
+                )
+                match_index = self.match_neighbour(
+                    local_point_.origin_coord,
+                    local_point_.offset[self.num_local_view - 1 :: self.num_local_view],
+                    global_point_.origin_coord[principal_view_mask],
+                    batch2offset(principal_view_batch),
+                )
+                
+                unmask_target_sim = self.sinkhorn_knopp(
+                    global_unmask_feat[principal_view_mask][match_index[:, 1]],
+                    self.teacher_temp,
+                )
+            
+            unmask_loss = -torch.sum(
+                unmask_target_sim
+                * F.log_softmax(
+                    unmask_pred_sim[match_index[:, 0]] / self.student_temp, dim=-1
+                ),
+                dim=-1,
+            )
+            unmask_loss = torch_scatter.segment_coo(
+                unmask_loss,
+                index=local_point_.batch[match_index[:, 0]],
+                reduce="mean",
+            ).mean()
+            result_dict["unmask_loss"] = unmask_loss
+            result_dict["loss"].append(unmask_loss * self.unmask_loss_weight)
+
+        result_dict["loss"] = sum(result_dict["loss"])
+
+        if get_world_size() > 1:
+            for loss in result_dict.values():
+                dist.all_reduce(loss, op=dist.ReduceOp.AVG)
+        return result_dict
+

@@ -530,3 +530,5 @@ class Sonata(PointModel):
             for loss in result_dict.values():
                 dist.all_reduce(loss, op=dist.ReduceOp.AVG)
         return result_dict
+
+

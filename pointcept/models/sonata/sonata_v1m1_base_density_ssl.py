@@ -23,65 +23,7 @@ from pointcept.models.utils import offset2batch, offset2bincount, batch2offset
 from pointcept.utils.comm import get_world_size, all_gather
 from pointcept.utils.scheduler import CosineScheduler
 
-class LearnableInterpolator(nn.Module):
-    def __init__(self, in_channels, hidden_channels=64, k=3):
-        """
-        基于注意力的可学习插值模块
-        Args:
-            in_channels: 输入特征维度 (对应 head_hidden_channels 或投影后的维度)
-            hidden_channels: 注意力 MLP 的隐藏层维度
-            k: KNN 的邻居数量
-        """
-        super().__init__()
-        self.k = k
-        
-        # 注意力计算网络: [Feature + Relative_Pos] -> Attention_Weight
-        self.attn_mlp = nn.Sequential(
-            nn.Linear(in_channels + 3, hidden_channels),
-            nn.LayerNorm(hidden_channels),
-            nn.ReLU(),
-            nn.Linear(hidden_channels, 1) # 输出标量权重
-        )
 
-    def forward(self, sparse_coord, sparse_feat, sparse_offset, dense_coord, dense_offset):
-        """
-        Args:
-            sparse_coord: (M, 3) 稀疏点云坐标 (Key/Value Position)
-            sparse_feat:  (M, C) 稀疏点云特征 (Value Content)
-            dense_coord:  (N, 3) 稠密点云坐标 (Query Position)
-        Returns:
-            dense_feat:   (N, C) 插值后的稠密特征
-        """
-        # 1. KNN 查询: 为每个 Dense 点找 k 个 Sparse 邻居
-        # 注意: 确保 pointops.knn_query 返回顺序是 (idx, dist)
-        idx, _ = pointops.knn_query(self.k, sparse_coord, sparse_offset, dense_coord, dense_offset)
-        
-        # 2. 收集邻居信息
-        # idx: (N, 3), 转为 long 用于索引
-        idx = idx.long()
-        
-        # 收集特征: (N, k, C)
-        neighbor_feat = sparse_feat[idx] 
-        
-        # 收集坐标并计算相对位置: (N, k, 3)
-        neighbor_coord = sparse_coord[idx]
-        center_coord = dense_coord.unsqueeze(1).repeat(1, self.k, 1)
-        rel_pos = center_coord - neighbor_coord
-        
-        # 3. 计算注意力权重
-        # 为了稳定性，建议对用于计算权重的 feature 进行 detach (阻断梯度)
-        # 这样 Attention 只负责"适应"特征，而不会为了让权重好算去"篡改"特征
-        attn_input = torch.cat([neighbor_feat.detach(), rel_pos], dim=-1) # (N, k, C+3)
-        
-        # 计算原始分数 -> Softmax 归一化
-        attn_scores = self.attn_mlp(attn_input) # (N, k, 1)
-        attn_weights = F.softmax(attn_scores, dim=1) # (N, k, 1)
-        
-        # 4. 加权求和 (Feature Aggregation)
-        # weight: (N, k, 1) * feat: (N, k, C) -> sum dim=1 -> (N, C)
-        interpolated_feat = torch.sum(attn_weights * neighbor_feat, dim=1)
-        
-        return interpolated_feat
 class OnlineCluster(nn.Module):
     def __init__(
         self,
@@ -126,6 +68,38 @@ class OnlineCluster(nn.Module):
         return similarity
 
 
+class DeepProjectionHead(nn.Module):
+    def __init__(self, in_channels, hidden_channels, out_channels, num_layers=3):
+        """
+        深层投影头：用于解耦 Backbone 和 Density 任务
+        Args:
+            in_channels: Backbone 输出维度 (e.g., 1088 - PTv3 输出)
+            hidden_channels: 隐藏层维度 (e.g., 4096 - 需要足够宽)
+            out_channels: 输出维度 (e.g., 4096 - 对应 Prototypes 数量)
+            num_layers: MLP 层数，建议 3 或 4
+        """
+        super().__init__()
+        layers = []
+        
+        # --- 第一层 ---
+        layers.append(nn.Linear(in_channels, hidden_channels))
+        layers.append(nn.LayerNorm(hidden_channels)) # [核心] 必须用 LayerNorm
+        layers.append(nn.GELU()) 
+        
+        # --- 中间层 (增加深度) ---
+        for _ in range(num_layers - 2):
+            layers.append(nn.Linear(hidden_channels, hidden_channels))
+            layers.append(nn.LayerNorm(hidden_channels))
+            layers.append(nn.GELU())
+            
+        # --- 输出层 ---
+        layers.append(nn.Linear(hidden_channels, out_channels))
+        
+        self.mlp = nn.Sequential(*layers)
+
+    def forward(self, x):
+        return self.mlp(x)
+
 @MODELS.register_module("Sonata-v1m1_density_ssl")
 class Sonata(PointModel):
     def __init__(
@@ -158,13 +132,13 @@ class Sonata(PointModel):
         match_max_r=0.08,
         up_cast_level=2,
 
-        # density ssl specific parameters can be added here
-        density_loss_weight=1.0,
+
+        # density ssl specific parameters
+        density_start=0.1,
+        density_base=0.1,
+        density_final=0.0,
     ):
         super(Sonata, self).__init__()
-
-        self.density_loss_weight = density_loss_weight
-
         self.mask_loss_weight = mask_loss_weight
         self.roll_mask_loss_weight = roll_mask_loss_weight
         self.unmask_loss_weight = unmask_loss_weight
@@ -208,6 +182,14 @@ class Sonata(PointModel):
         # up cast level
         self.up_cast_level = up_cast_level
 
+
+        self.density_start = density_start
+        self.density_base = density_base
+        self.density_final = density_final
+        self.density_weight_scheduler = None
+        self.density_loss_weight = density_start # Init value
+
+
         # one of unmask, mask, roll mask loss enable
         assert unmask_loss_weight + mask_loss_weight + roll_mask_loss_weight > 0
         # roll mask loss need more than one global view
@@ -227,6 +209,12 @@ class Sonata(PointModel):
         student_model_dict["backbone"] = student_backbone
         teacher_model_dict["backbone"] = teacher_backbone
 
+        self.head_in_channels = head_in_channels
+        self.head_hidden_channels = head_hidden_channels
+        self.head_embed_channels = head_embed_channels
+        self.head_num_prototypes = head_num_prototypes
+
+
         head = partial(
             OnlineCluster,
             in_channels=head_in_channels,
@@ -240,22 +228,27 @@ class Sonata(PointModel):
         if self.unmask_loss_weight > 0:
             student_model_dict["unmask_head"] = head()
             teacher_model_dict["unmask_head"] = head()
-        
-        if self.density_loss_weight > 0:
-            student_model_dict["density_head"] = head()
-            teacher_model_dict["density_head"] = head()
 
-
-            self.density_interpolator = LearnableInterpolator(
-                in_channels=head_num_prototypes, 
-                hidden_channels=64,
-                k=3
+        # Build Density Head (Deep Projection Head) - Only for Student!
+        if self.density_start > 0 or self.density_base > 0:
+            # [关键修改]
+            # 1. 输入是 head_in_channels (Backbone原始输出)
+            # 2. 输出是 head_num_prototypes (对齐 Teacher 的 Mask Head 输出)
+            self.density_head = DeepProjectionHead(
+                in_channels=self.head_in_channels, 
+                hidden_channels=self.head_hidden_channels, 
+                out_channels=self.head_num_prototypes,     
+                num_layers=3  
             )
-
+            student_model_dict["density_head"] = self.density_head
+            # 注意：Teacher 不需要 density_head
+        
         self.student = nn.ModuleDict(student_model_dict)
         self.teacher = nn.ModuleDict(teacher_model_dict)
         for k, v in self.student.items():
-            self.teacher[k].load_state_dict(self.student[k].state_dict())
+            if k in self.teacher:  # 增加判断：只有双方都有的模块才复制权重
+                self.teacher[k].load_state_dict(self.student[k].state_dict())
+                
         for p in self.teacher.parameters():
             p.requires_grad = False
 
@@ -336,8 +329,16 @@ class Sonata(PointModel):
             m = self.momentum
             student_param_list = list(self.student.parameters())
             teacher_param_list = list(self.teacher.parameters())
-            torch._foreach_mul_(teacher_param_list, m)
-            torch._foreach_add_(teacher_param_list, student_param_list, alpha=1 - m)
+            #torch._foreach_mul_(teacher_param_list, m)
+            #torch._foreach_add_(teacher_param_list, student_param_list, alpha=1 - m)
+
+            for key in self.teacher.keys():
+                if key in self.student:
+                    t_params = list(self.teacher[key].parameters())
+                    s_params = list(self.student[key].parameters())
+                    if len(t_params) > 0:
+                         torch._foreach_mul_(t_params, m)
+                         torch._foreach_add_(t_params, s_params, alpha=1 - m)
 
     @staticmethod
     def sinkhorn_knopp(feat, temp, num_iter=3):
@@ -371,7 +372,7 @@ class Sonata(PointModel):
         mask_ratio = self.mask_ratio
 
         # Grouping points with grid patch
-        min_coord = torch_scatter.segment_coo(coord, batch, reduce="min")
+        min_coord = torch_scatter.segment_coo(coord, batch, reduce="min") 
         grid_coord = ((coord - min_coord[batch]) // mask_size).int()
         grid_coord = torch.cat([batch.unsqueeze(-1), grid_coord], dim=-1)
         unique, point_cluster, counts = torch.unique(
@@ -495,14 +496,15 @@ class Sonata(PointModel):
                 )
 
 
+            
+
             # create result dictionary for return
             result_dict = dict(loss=[])
             # teacher backbone forward (shared with mask and unmask)
             global_point_ = self.teacher.backbone(global_point)
-            global_point_ = self.up_cast(global_point_)
+            global_point_ = self.up_cast(global_point_) # 
             global_feat = global_point_.feat
 
-        # 1. masking task, including mask loss and roll mask loss
         if self.mask_loss_weight > 0 or self.roll_mask_loss_weight > 0:
             # teacher head forward
             with torch.no_grad():
@@ -572,73 +574,6 @@ class Sonata(PointModel):
                 ).mean()
                 result_dict["roll_mask_loss"] = roll_mask_loss
                 result_dict["loss"].append(roll_mask_loss * self.roll_mask_loss_weight)
-        
-        # 2. density ssl task
-        if self.density_loss_weight > 0 and "sparse_coord" in data_dict:
-            # student forward: reconstruct sparse point features
-            sparse_point_ = self.student.backbone(sparse_point)
-            sparse_point_ = self.up_cast(sparse_point_)
-
-            # use mask_head(projection head) to map features to the same space
-            # sparse_pred_feat = self.student.mask_head(sparse_point_.feat)
-            sparse_pred_feat = self.student.density_head(sparse_point_.feat)
-
-            dense_interpolated_pred = self.density_interpolator(
-                sparse_coord=sparse_point_.coord,
-                sparse_feat=sparse_pred_feat,
-                sparse_offset=sparse_point_.offset,
-                dense_coord=global_point.coord,
-                dense_offset=global_point.offset
-            )
-
-            
-
-            # feature affinity and interpolation
-            with torch.no_grad():
-                
-                #idx, distance = pointops.knn_query(
-                    #3, # k=3 
-                    #sparse_point_.coord.float(), sparse_point_.offset.int(), # Known (Sparse)
-                    #global_point_.coord.float(), global_point_.offset.int()  # Query (Dense)
-                #)
-                #dist_recip = 1.0 / (distance + 1e-8)
-                #norm = torch.sum(dist_recip, dim=1, keepdim=True)
-                #weight = dist_recip / norm
-
-
-
-                # teacher_dense_feat = self.teacher.mask_head(global_feat)
-                teacher_dense_feat = self.teacher.density_head(global_feat)
-
-                density_target_sim = self.sinkhorn_knopp(
-                    teacher_dense_feat,
-                    self.teacher_temp
-                )
-            
-            '''
-            dense_interpolated_pred = pointops.interpolation(
-                sparse_pred_feat, idx.int(), weight
-            )
-            '''
-
-            #dense_interpolated_pred = 0
-            #for i in range(3): 
-                #dense_interpolated_pred += sparse_pred_feat[idx[:, i].long()] * weight[:, i].unsqueeze(-1)
-
-
-
-
-            density_loss = -torch.sum(
-                density_target_sim
-                * F.log_softmax(dense_interpolated_pred / self.student_temp, dim=-1),
-                dim=-1
-            ).mean()
-            
-            result_dict["density_loss"] = density_loss
-            result_dict["loss"].append(density_loss * self.density_loss_weight)
-
-
-        # 3. unmasking task, i.e., unmask loss
         if self.unmask_loss_weight > 0:
             # teacher head forward
             with torch.no_grad():
@@ -678,9 +613,63 @@ class Sonata(PointModel):
             ).mean()
             result_dict["unmask_loss"] = unmask_loss
             result_dict["loss"].append(unmask_loss * self.unmask_loss_weight)
+        
+        if self.density_loss_weight > 0 and "sparse_coord" in data_dict:
+            # Student Forward
+            sparse_point_ = self.student.backbone(sparse_point)
+            sparse_point_ = self.up_cast(sparse_point_)
+            
+            # [关键] 使用独立的 Deep Density Head 进行预测
+            # 输入: Backbone Feat (N_sparse, C_in)
+            # 输出: Prototypes Logits (N_sparse, N_proto)
+            sparse_pred_logits = self.student.density_head(sparse_point_.feat)
+
+            # Feature Affinity / Interpolation
+            # 我们需要比较 Student Sparse 预测与 Teacher Dense 目标
+            # 方法：将 Sparse 预测插值到 Dense 位置
+            with torch.no_grad():
+                idx, distance = pointops.knn_query(
+                    3, # k=3 
+                    sparse_point_.coord.float(), sparse_point_.offset.int(), # Support (Sparse)
+                    global_point_.coord.float(), global_point_.offset.int()  # Query (Dense)
+                )
+                dist_recip = 1.0 / (distance + 1e-8)
+                norm = torch.sum(dist_recip, dim=1, keepdim=True)
+                weight = dist_recip / norm
+
+                # [关键] Teacher Target 生成
+                # Teacher 使用 Mask Head (主任务头) 生成目标! 
+                # 这样 Student Density Head 就必须学会预测"语义相关的分布"
+                # global_mask_feat 已经在上面计算过了 = self.teacher.mask_head(global_feat)
+                
+                density_target_sim = self.sinkhorn_knopp(
+                    global_point_.feat, # (N_dense, N_proto)
+                    self.teacher_temp
+                )
+            
+            # Interpolate Student Logits to Dense locations
+            dense_interpolated_pred = 0
+            for i in range(3): 
+                dense_interpolated_pred += sparse_pred_logits[idx[:, i].long()] * weight[:, i].unsqueeze(-1)
+
+            # Compute Loss
+            density_loss = -torch.sum(
+                density_target_sim
+                * F.log_softmax(dense_interpolated_pred / self.student_temp, dim=-1),
+                dim=-1
+            ).mean()
+            
+            result_dict["density_loss"] = density_loss
+            result_dict["loss"].append(density_loss * self.density_loss_weight)        
+        
+
+        
+        
         result_dict["loss"] = sum(result_dict["loss"])
 
         if get_world_size() > 1:
             for loss in result_dict.values():
                 dist.all_reduce(loss, op=dist.ReduceOp.AVG)
         return result_dict
+
+
