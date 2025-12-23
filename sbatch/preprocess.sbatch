@@ -34,7 +34,7 @@ export PYTHONPATH=./
 # /home/shsi/datasets/Point_Cloud/navarra17
 # /home/shsi/datasets/Point_Cloud/unused_data
 RAW_DATA_DIR="/home/shsi/datasets/Point_Cloud/navarra17"
-GRID_SIZE=1.0
+GRID_SIZE=2.0
 TILE_SIZE=250
 HAS_LABEL=True
 TILE_ORIENT=True

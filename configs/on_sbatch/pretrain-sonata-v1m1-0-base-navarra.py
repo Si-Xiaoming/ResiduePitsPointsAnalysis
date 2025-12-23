@@ -6,7 +6,8 @@ Dataset: ScanNet v2, ScanNet++, S3DIS, HM3D, ArkitScene, Structured3D
 _base_ = ["../_base_/default_runtime.py"]
 
 # misc custom setting
-batch_size = 4  # bs: total bs in all gpus
+batch_size = 1 # bs: total bs in all gpus
+gradient_accumulation_steps=4
 num_worker = 16
 mix_prob = 0
 clip_grad = 3.0
@@ -16,14 +17,17 @@ amp_dtype = "bfloat16"
 evaluate = False
 find_unused_parameters = False
 num_points_per_step = 80000  # 65536
-grid_size = 0.2 
+grid_size = 0.2
 dataset_type = "NavarraDataset"
-data_root = "/home/shsi/datasets/Point_Cloud/navarra17"
+data_root = "/home/shsi/datasets/Point_Cloud/navarra-01/"
 sync_bn=True  # 启用跨多个GPU的同步批归一化，有助于稳定训练过程，特别是在小批量大小下
+enable_wandb = True
+wandb_project = "pointcept" # custom your project name e.g. Sonata, PTv3
+wandb_key = "8e059ab5df68865b71cfae546e75a48702a68d65"  # wandb token, default is None. If None, login with `wandb login` in your terminal
 
 # model settings
 model = dict(
-    type="Sonata-v1m1-Resolution",
+    type="Sonata-v1m1",
     # backbone - student & teacher
     backbone=dict(
         type="PT-v3m2",

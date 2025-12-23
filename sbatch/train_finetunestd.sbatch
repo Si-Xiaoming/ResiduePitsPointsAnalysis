@@ -1,5 +1,5 @@
 #!/bin/bash
-#SBATCH --job-name=2-6
+#SBATCH --job-name=2-10
 #SBATCH --mail-type=END,FAIL
 #SBATCH --mail-user=d119918@studenti.polito.it
 #SBATCH --partition=gpu_a40

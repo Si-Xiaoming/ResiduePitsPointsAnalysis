@@ -17,6 +17,8 @@ seed=2545321
 
 # weight = "/home/shsi/outputs/on_sbatch/0-0_density/model/epoch_10.pth"
 #weight = "/home/shsi/outputs/on_sbatch/monitor_gs02/model/epoch_10.pth"
+
+
 weight = "/home/shsi/outputs/on_sbatch/0-0_density/model/epoch_10.pth"
 dataset_type = "NavarraDataset"
 data_root = "/home/shsi/datasets/Point_Cloud/navarra-05"

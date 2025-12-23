@@ -1,5 +1,5 @@
 #!/bin/bash
-#SBATCH --job-name=1-1-pre
+#SBATCH --job-name=1-3-pre2
 #SBATCH --mail-type=END,FAIL
 #SBATCH --mail-user=d119918@studenti.polito.it
 #SBATCH --partition=gpu_a40
@@ -18,7 +18,7 @@ export PYTHONPATH=./
 echo "当前工作目录: $(pwd)"
 
 
-CONFIG_PATH=configs/on_sbatch/pretrain-density.py
+CONFIG_PATH=configs/on_sbatch/pretrain-sonata-v1m1-0-base-navarra.py
 # pretrain-sonata-v1m1-0-outdoor-navarra.py   pretrain-density.py
 
 SAVE_PATH=/home/shsi/outputs/residue/residue-pretrain
