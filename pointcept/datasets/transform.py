@@ -1043,7 +1043,20 @@ class MultiViewGenerator(object):
         self.local_view_num = local_view_num
         self.local_view_scale = local_view_scale
         self.global_shared_transform = Compose(global_shared_transform)
-        self.global_transform = Compose(global_transform)
+        
+        # 处理不对称增强配置的情况
+        if global_transform is not None and isinstance(global_transform[0], (list, tuple)):
+            self.asymmetric_global = True
+            # 将每个子列表分别构建为 Compose 对象
+            self.global_transform = [Compose(t) for t in global_transform]
+            # 确保提供的增强配置数量与视图数量匹配（或者可以循环使用）
+            assert len(self.global_transform) == global_view_num, \
+                f"Asymmetric transform count ({len(self.global_transform)}) must match global_view_num ({global_view_num})"
+        else:
+            self.asymmetric_global = False
+            self.global_transform = Compose(global_transform)
+        # 处理不对称增强配置的情况
+
         self.local_transform = Compose(local_transform)
         self.max_size = max_size
         self.center_height_scale = center_height_scale
@@ -1113,14 +1126,23 @@ class MultiViewGenerator(object):
 
         # augmentation and concat
         view_dict = {}
-        for global_view in global_views:
+
+        for i, global_view in enumerate(global_views):
             global_view.pop("index")
-            global_view = self.global_transform(global_view)
+            if self.asymmetric_global:
+                # 这里的 i=0 是 Teacher, i=1 是 Student
+                # 循环调用对应的 transform pipeline
+                global_view = self.global_transform[i % len(self.global_transform)](global_view)
+            else:
+                global_view = self.global_transform(global_view)
+                
             for key in self.view_keys:
                 if f"global_{key}" in view_dict.keys():
                     view_dict[f"global_{key}"].append(global_view[key])
                 else:
                     view_dict[f"global_{key}"] = [global_view[key]]
+
+
         view_dict["global_offset"] = np.cumsum(
             [data.shape[0] for data in view_dict["global_coord"]]
         )
@@ -1195,6 +1217,7 @@ class MultiViewGeneratorDensity(object):
         self.local_view_scale = local_view_scale
         self.global_shared_transform = Compose(global_shared_transform)
         self.global_transform = Compose(global_transform)
+        
         self.local_transform = Compose(local_transform)
         self.max_size = max_size
         self.enc2d_max_size = enc2d_max_size
