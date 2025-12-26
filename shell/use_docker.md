@@ -26,11 +26,8 @@ docker run -it --gpus all -m 30g --cpus 8 ^
 
 >docker run -it --name ptcept_container --gpus all -m 50g --shm-size 8G --cpus 8 -v %CD%:/workspace -v D:/04-Datasets:/datasets -p 8000:22 ptcept:02
 
+docker run -itd --name cept_container --gpus all --shm-size 8g -p 2222:22 -p 8888:8888 -p 6006:6006 -v C:/Users/shumi/codes:/workspace/codes -v C:/Users/shumi/datasets:/workspace/datasets ptcept:01
 
-docker run -it --name ptcept_container --gpus all -m 50g --shm-size 8G --cpus 8 -v %CD%:/workspace -v D:/04-Datasets:/datasets -p 8000:22 ptcept:02
-
-
-docker run -it --name test_container --gpus all -m 50g --shm-size 8G --cpus 8 -v D:/04-Datasets:/datasets -p 7533:22 ptcept:v3
 
 # 容器打包成镜像
 
@@ -85,19 +82,10 @@ compact vdisk	#执行压缩
 
 # Appendix
 
-todo install ssh
 
-```
-apt-get install -y openssh-server
-service ssh start
 
-```
-
-RUN apt-get update && apt-get install -y openssh-server
-CMD ["/usr/sbin/sshd", "-D"]
-
-docker exec -it /bin/bash ID
-
+> docker exec -it ID /bin/bash 
+docker exec -it 5f56e4da39a4b1672a6f3dd6d84016ce72c0117fde1bb2909ccbd4fdaddefbe0 /bin/bash 
 
 
 # Reference
