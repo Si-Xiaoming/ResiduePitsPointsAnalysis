@@ -1,93 +1,53 @@
-_base_ = ["../_base_/default_runtime.py"]
-
-# misc custom setting
-batch_size = 4  # bs: total bs in all gpus
-num_worker = 4
-mix_prob = 0.8
-clip_grad = 3.0
-empty_cache = False
+weight = None  # path to model weight
+resume = False  # whether to resume training process
+evaluate = True  # evaluate after each epoch training process
+test_only = False  # test process
+gradient_accumulation_steps = 1  # gradient accumulation steps
+seed = 2545321  # train process will init a random seed and record
+save_path = "/datasets/exp/default"
+num_points_per_step = 65536
+num_worker = 4  # total worker in all gpu
+batch_size = 4 # total batch size in all gpu
+batch_size_val = None  # auto adapt to bs 1 for each gpu
+batch_size_test = None  # auto adapt to bs 1 for each gpu
+epoch = 100  # total epoch, data loop = epoch // eval_epoch
+eval_epoch = 10  # sche total eval & checkpoint epoch
+clip_grad = None  # disable with None, enable with a float
+grid_size = 0.1
+sync_bn = False
 enable_amp = True
-num_points_per_step = 80000
-grid_size = 0.5
-gradient_accumulation_steps=1
+amp_dtype = "float16"
+empty_cache = False
+empty_cache_per_epoch = True
+find_unused_parameters = False
 enable_wandb = True
-wandb_project = "cept-seg" # custom your project name e.g. Sonata, PTv3
+wandb_project = "residue-backbone" # custom your project name e.g. Sonata, PTv3
 wandb_key = "8e059ab5df68865b71cfae546e75a48702a68d65"  # wandb token, default is None. If None, login with `wandb login` in your terminal
-seed=2545321
 
-# weight = "/home/shsi/outputs/on_sbatch/0-0_density/model/epoch_10.pth"
-# weight = "/home/shsi/outputs/on_sbatch/monitor_gs02/model/epoch_10.pth"  1-2-pre
-weight = "/home/shsi/outputs/residue/residue-pretrain/1-3-pre2/model/epoch_10.pth"
 dataset_type = "NavarraDataset"
-data_root = "/home/shsi/datasets/Point_Cloud/navarra-05"
-#"/home/shsi/datasets/Point_Cloud/navarra_ft"
-# /home/shsi/datasets/Point_Cloud/navarra-05
-# "/home/shsi/datasets/Point_Cloud/unused_data" 
+data_root ="/home/shsi/datasets/Point_Cloud/navarra-01"
+# data_root = "/beegfs-scratch/shsi/datasets/pointclouds/residue/navarra-01"
 
-epoch = 400 # 修改了!!
-eval_epoch = 20
-class_weights = [1.0, 1.0, 3.0, 5.0]
-# model settings
-model = dict(
-    type="DefaultSegmentorV2",
-    num_classes=4,
-    backbone_out_channels=64,
-    backbone=dict(
-        type="PT-v3m2",
-        in_channels=6,
-        order=("z", "z-trans", "hilbert", "hilbert-trans"),
-        stride=(2, 2, 2, 2),
-        enc_depths=(3, 3, 3, 12, 3),
-        enc_channels=(48, 96, 192, 384, 512),
-        enc_num_head=(3, 6, 12, 24, 32),
-        enc_patch_size=(1024, 1024, 1024, 1024, 1024),
-        dec_depths=(2, 2, 2, 2),
-        dec_channels=(64, 96, 192, 384),
-        dec_num_head=(4, 6, 12, 24),
-        dec_patch_size=(1024, 1024, 1024, 1024),
-        mlp_ratio=4,
-        qkv_bias=True,
-        qk_scale=None,
-        attn_drop=0.0,
-        proj_drop=0.0,
-        drop_path=0.3,
-        shuffle_orders=True,
-        pre_norm=True,
-        enable_rpe=False,
-        enable_flash=True,
-        upcast_attention=False,
-        upcast_softmax=False,
-        traceable=False,
-        mask_token=False,
-        enc_mode=False,
-        freeze_encoder=True,
-    ),
-    criteria=[
-        # dict(type="CrossEntropyLoss", loss_weight=1.0, ignore_index=-1), #  , weight=class_weights
-        
-        dict(type="Poly1CrossEntropyLoss", 
-         loss_weight=1.0, 
-         ignore_index=-1, 
-         epsilon=1.0,
-         weight=class_weights), # class_weights   None
+mix_prob = 0.8
+param_dicts = None  # example: param_dicts = [dict(keyword="block", lr_scale=0.1)]
 
-        dict(type="LovaszLoss", mode="multiclass", loss_weight=1.0, ignore_index=-1),
-    ],
-    freeze_backbone=False,
-)
+# hook
+hooks = [
+    dict(type="CheckpointLoader"),
+    dict(type="ModelHook"),
+    dict(type="IterationTimer", warmup_iter=2),
+    dict(type="InformationWriter"),
+    dict(type="SemSegEvaluator"),
+    dict(type="CheckpointSaver", save_freq=5),
+    dict(type="PreciseEvaluator", test_last=False),
+]
 
-# scheduler settings
+# Trainer
+train = dict(type="DefaultTrainer")
 
-optimizer = dict(type="AdamW", lr=0.002, weight_decay=0.02)
-scheduler = dict(
-    type="OneCycleLR",
-    max_lr=[0.002, 0.0002],
-    pct_start=0.05,
-    anneal_strategy="cos",
-    div_factor=10.0,
-    final_div_factor=1000.0,
-)
-param_dicts = [dict(keyword="block", lr=0.0002)]
+# Tester
+test = dict(type="SemSegTester", verbose=True)
+
 
 data = dict(
     num_classes=4,
@@ -318,17 +278,3 @@ data = dict(
     ),
 )
 
-
-# hook
-hooks = [
-    dict(
-        type="CheckpointLoader",
-        keywords="module.student.backbone",
-        replacement="module.backbone",
-    ),
-    dict(type="IterationTimer", warmup_iter=2),
-    dict(type="InformationWriter"),
-    dict(type="SemSegEvaluator"),
-    dict(type="CheckpointSaver", save_freq=None),
-    dict(type="PreciseEvaluator", test_last=False),
-]

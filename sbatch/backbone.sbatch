@@ -1,5 +1,5 @@
 #!/bin/bash
-#SBATCH --job-name=1-10
+#SBATCH --job-name=4-5
 #SBATCH --mail-type=END,FAIL
 #SBATCH --mail-user=d119918@studenti.polito.it
 #SBATCH --partition=gpu_a40
@@ -18,9 +18,9 @@ export PYTHONPATH=./
 echo "当前工作目录: $(pwd)"
 
 
-CONFIG_PATH=configs/on_sbatch/semseg-std2.py
+CONFIG_PATH=configs/exp_paper/backbone_ptv2.py
 # semseg-navarra.py     semseg-std2.py
-SAVE_PATH=/home/shsi/outputs/residue/residue-seg
+SAVE_PATH=/home/shsi/outputs/residue/residue-backbone
 # 输出job name
 echo "Job Name: $SLURM_JOB_NAME"
 SAVE_PATH=${SAVE_PATH}/${SLURM_JOB_NAME}
