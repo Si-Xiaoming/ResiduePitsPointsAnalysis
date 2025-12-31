@@ -8,7 +8,7 @@ clip_grad = 3.0
 empty_cache = False
 enable_amp = True
 num_points_per_step = 80000
-grid_size = 0.5
+grid_size = 0.1
 gradient_accumulation_steps=1
 enable_wandb = True
 wandb_project = "cept-seg" # custom your project name e.g. Sonata, PTv3
@@ -19,7 +19,7 @@ seed=2545321
 # weight = "/home/shsi/outputs/on_sbatch/monitor_gs02/model/epoch_10.pth"  1-2-pre
 weight = "/home/shsi/outputs/residue/residue-pretrain/1-3-pre2/model/epoch_10.pth"
 dataset_type = "NavarraDataset"
-data_root = "/home/shsi/datasets/Point_Cloud/navarra-05"
+data_root = "/home/shsi/datasets/Point_Cloud/navarra-01"
 #"/home/shsi/datasets/Point_Cloud/navarra_ft"
 # /home/shsi/datasets/Point_Cloud/navarra-05
 # "/home/shsi/datasets/Point_Cloud/unused_data" 

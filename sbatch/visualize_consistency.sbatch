@@ -17,8 +17,8 @@ cd "$WORK_DIR"
 export PYTHONPATH=./
 echo "当前工作目录: $(pwd)"
 
-CONFIG_FILE=configs/on_sbatch/pretrain-sonata-v1m1-0-base-navarra.py
-CHECKPOINT=/home/shsi/outputs/on_sbatch/02_std_monitor/model/epoch_10.pth.pth
+CONFIG_FILE=configs/on_sbatch/vis_consist.py
+CHECKPOINT=/home/shsi/outputs/on_sbatch/02_std_monitor/model/epoch_10.pth
 SAVE_PATH=/home/shsi/outputs/residue/images
 DROP_RATE=0.8  # 这里设置丢弃率，建议设置高一点 (0.8 或 0.9) 来凸显效果
 
