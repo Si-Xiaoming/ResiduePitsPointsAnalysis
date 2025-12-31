@@ -18,8 +18,8 @@ seed=2545321
 # weight = "/home/shsi/outputs/on_sbatch/0-0_density/model/epoch_10.pth"
 #weight = "/home/shsi/outputs/on_sbatch/monitor_gs02/model/epoch_10.pth"
 
-
-weight = "/home/shsi/outputs/residue/residue-pretrain/1-3-pre2/model/epoch_10.pth"
+# 1-2-pre 1-3-pre2
+weight = "/home/shsi/outputs/residue/residue-pretrain/1-2-pre/model/epoch_10.pth"
 dataset_type = "NavarraDataset"
 data_root = "/home/shsi/datasets/Point_Cloud/unused_data" 
 #"/home/shsi/datasets/Point_Cloud/navarra_ft"
