@@ -77,7 +77,7 @@ model = dict(
 # Dataset Settings (Simplified for Visualization)
 # ---------------------------------------------------------------------------- #
 dataset_type = "NavarraDataset"
-data_root = "/home/shsi/datasets/Point_Cloud/navarra-01"
+data_root = "/home/shsi/datasets/Point_Cloud/vis-unused"
 grid_size = 0.1 # 使用与预训练相同的 grid_size
 
 data = dict(

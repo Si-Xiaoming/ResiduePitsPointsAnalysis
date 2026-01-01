@@ -33,9 +33,10 @@ export PYTHONPATH=./
 # 4. 设置参数
 # /home/shsi/datasets/Point_Cloud/navarra17
 # /home/shsi/datasets/Point_Cloud/unused_data
-RAW_DATA_DIR="/home/shsi/datasets/Point_Cloud/navarra17"
-GRID_SIZE=2.0
-TILE_SIZE=250
+# /home/shsi/datasets/Point_Cloud/vis-unused
+RAW_DATA_DIR="/home/shsi/datasets/Point_Cloud/vis-unused"
+GRID_SIZE=0.1
+TILE_SIZE=-250
 HAS_LABEL=True
 TILE_ORIENT=True
 
