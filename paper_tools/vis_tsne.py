@@ -3,6 +3,7 @@ import torch.nn.functional as F
 import numpy as np
 import os
 import argparse
+from collections import OrderedDict
 
 import matplotlib
 matplotlib.use('Agg')
@@ -11,20 +12,25 @@ import matplotlib.pyplot as plt
 from sklearn.manifold import TSNE
 from sklearn.decomposition import PCA
 
-# Pointcept 依赖
+# Pointcept Dependencies
 from pointcept.utils.config import Config, DictAction
 from pointcept.models import build_model
-from pointcept.datasets import build_dataset
-from pointcept.utils.checkpoint import CheckpointLoader
+from pointcept.datasets import build_dataset, collate_fn 
 from pointcept.models.utils.structure import Point
 import pointops
 
 def compute_local_curvature(coord, offset, k=16):
     """
-    计算局部几何粗糙度/曲率 (利用 KNN 方差)
+    Compute local geometric roughness/curvature using KNN variance.
+    Input: coord (N, 3), offset (B)
+    Output: curvature (N,)
     """
     # Self-query to find neighbors
-    idx, dist = pointops.knn_query(k, coord.float(), offset.int(), coord.float(), offset.int())
+    # Note: Ensure coords are contiguous for cuda ops
+    coord = coord.float().contiguous()
+    offset = offset.int().contiguous()
+    
+    idx, dist = pointops.knn_query(k, coord, offset, coord, offset)
     
     # Gather neighbor coordinates: (N, k, 3)
     neighbor_coords = coord[idx.long()]
@@ -32,11 +38,28 @@ def compute_local_curvature(coord, offset, k=16):
     # Center neighbors around the query point
     centered = neighbor_coords - coord.unsqueeze(1)
     
-    # Variance sum (Trace of covariance roughly) -> Roughness
+    # Variance sum (approximate roughness)
     # (N, k, 3) -> var dim=1 -> (N, 3) -> sum dim=-1 -> (N,)
     curvature = torch.var(centered, dim=1).sum(dim=-1)
     
     return curvature
+
+def load_checkpoint(model, filename):
+    """Manual checkpoint loader to handle DDP prefixes and partial loading."""
+    if os.path.isfile(filename):
+        print(f"=> Loading checkpoint '{filename}'")
+        checkpoint = torch.load(filename, map_location='cpu', weights_only=False)
+        state_dict = checkpoint.get('state_dict', checkpoint)
+        
+        new_state_dict = OrderedDict()
+        for k, v in state_dict.items():
+            name = k[7:] if k.startswith('module.') else k
+            new_state_dict[name] = v
+        
+        msg = model.load_state_dict(new_state_dict, strict=False)
+        print("=> Loaded successfully.")
+    else:
+        raise FileNotFoundError(f"No checkpoint found at '{filename}'")
 
 def main():
     parser = argparse.ArgumentParser()
@@ -44,8 +67,8 @@ def main():
     parser.add_argument("--checkpoint", default="exp/sonata_resolution/model_best.pth", help="path to checkpoint")
     parser.add_argument("--options", nargs="+", action=DictAction, help="arguments in dict")
     parser.add_argument("--save-path", default="visualization/tsne_plots", help="path to save png")
-    parser.add_argument("--drop-rate", type=float, default=0.9, help="Extremely high drop rate to prove robustness")
-    parser.add_argument("--num-points-vis", type=int, default=2000, help="Total points to plot in t-SNE to avoid clutter")
+    parser.add_argument("--drop-rate", type=float, default=0.9, help="Student view drop rate")
+    parser.add_argument("--num-points-vis", type=int, default=2000, help="Total points to plot in t-SNE")
     args = parser.parse_args()
 
     # 1. Setup
@@ -60,26 +83,32 @@ def main():
         os.makedirs(args.save_path)
 
     # 2. Build Model
-    print(f"=> Building model...")
+    print(f"=> Building model: {cfg.model.type}")
     model = build_model(cfg.model).cuda()
     model.eval()
-    CheckpointLoader.load_checkpoint(model, args.checkpoint)
+    
+    load_checkpoint(model, args.checkpoint)
 
     # 3. Build Dataset
-    # 强制读取 test 目录的数据 (假设数据在 data_root/processed/test)
-    # 也可以直接复用 cfg.data.val 或 cfg.data.test
     print(f"=> Building dataset...")
-    if hasattr(cfg.data, 'test'):
-        dataset = build_dataset(cfg.data.test)
-    else:
-        dataset = build_dataset(cfg.data.val) # Fallback to val if test not defined
-        
-    loader = torch.utils.data.DataLoader(dataset, batch_size=1, shuffle=False, collate_fn=dataset.collate_fn)
+    # Prefer 'test' split, fallback to 'val'
+    dataset_cfg = cfg.data.test if hasattr(cfg.data, 'test') else cfg.data.val
+    dataset = build_dataset(dataset_cfg)
+    
+    loader = torch.utils.data.DataLoader(
+        dataset, 
+        batch_size=1, 
+        shuffle=False, 
+        num_workers=0, 
+        collate_fn=collate_fn
+    )
 
-    # 容器：存储特征和标签
+    # Containers for t-SNE
     # Labels: 0=Dense_Flat, 1=Dense_Edge, 2=Sparse_Flat, 3=Sparse_Edge
     collected_feats = []
     collected_labels = []
+    
+    GRID_SIZE = 0.1 # Ensure this matches your config/training
     
     print("=> Extracting features...")
     
@@ -94,22 +123,30 @@ def main():
             dense_point = Point(
                 coord=data_dict["coord"],
                 feat=data_dict["feat"] if "feat" in data_dict else data_dict["coord"],
-                offset=data_dict["offset"]
+                offset=data_dict["offset"],
+                grid_coord=data_dict.get("grid_coord", None),
+                grid_size=GRID_SIZE
             )
             
-            # Extract Dense Features
-            dense_out = model.backbone(dense_point)
-            if hasattr(model, 'up_cast'): dense_out = model.up_cast(dense_out)
-            # [关键] 取 Projection Head 之后的特征，那是对比学习发生的地方
-            dense_feats_all = model.mask_head(dense_out.feat) 
-            dense_feats_all = F.normalize(dense_feats_all, dim=-1)
+            # Teacher Forward (Output is SORTED/RE-ORDERED)
+            dense_out = model.teacher.backbone(dense_point)
+            if hasattr(model, 'up_cast'): 
+                dense_out = model.up_cast(dense_out)
+            
+            # Get Teacher Features (N, C)
+            feat_dense_all = model.teacher.mask_head(dense_out.feat)
+            feat_dense_all = F.normalize(feat_dense_all, dim=-1)
 
-            # --- B. Calculate Curvature (Distinguish Edge vs Flat) ---
-            curvature = compute_local_curvature(dense_point.coord, dense_point.offset)
+            # --- B. Calculate Curvature on OUTPUT coordinates ---
+            # We calculate on output coordinates to ensure 1-to-1 mapping with features
+            curvature = compute_local_curvature(dense_out.coord, dense_out.offset)
+            
             # Define thresholds (Top 10% as Edge, Bottom 50% as Flat)
             k_val = int(curvature.shape[0] * 0.1)
-            _, top_k_idx = torch.topk(curvature, k_val) # Edges/Canals
-            _, bot_k_idx = torch.topk(curvature, k_val, largest=False) # Flat ground
+            if k_val < 1: k_val = 1
+            
+            _, top_k_idx = torch.topk(curvature, k_val) # Edge indices (in sorted list)
+            _, bot_k_idx = torch.topk(curvature, k_val, largest=False) # Flat indices (in sorted list)
             
             edge_mask = torch.zeros_like(curvature, dtype=torch.bool)
             flat_mask = torch.zeros_like(curvature, dtype=torch.bool)
@@ -117,70 +154,90 @@ def main():
             flat_mask[bot_k_idx] = True
 
             # --- C. Prepare Sparse (Student) ---
-            N = dense_point.coord.shape[0]
-            num_keep = int(N * (1 - args.drop_rate))
+            N_input = dense_point.coord.shape[0]
+            num_keep = int(N_input * (1 - args.drop_rate))
             if num_keep < 10: num_keep = 10
             
-            # Random Drop
-            perm = torch.randperm(N, device=dense_point.coord.device)
+            # Random Drop on Input
+            perm = torch.randperm(N_input, device=dense_point.coord.device)
             keep_indices = perm[:num_keep]
             
+            sparse_grid_coord = None
+            if "grid_coord" in dense_point.keys():
+                sparse_grid_coord = dense_point.grid_coord[keep_indices]
+
             sparse_point = Point(
                 coord=dense_point.coord[keep_indices],
                 feat=dense_point.feat[keep_indices],
-                offset=torch.tensor([num_keep], device=dense_point.coord.device).int()
+                offset=torch.tensor([num_keep], device=dense_point.coord.device).int(),
+                grid_coord=sparse_grid_coord,
+                grid_size=GRID_SIZE
             )
             
-            # Extract Sparse Features
-            sparse_out = model.backbone(sparse_point)
-            if hasattr(model, 'up_cast'): sparse_out = model.up_cast(sparse_out)
-            sparse_feats_all = model.mask_head(sparse_out.feat)
-            sparse_feats_all = F.normalize(sparse_feats_all, dim=-1)
-
-            # --- D. Match & Collect ---
-            # Match Sparse back to Dense to know which point is which
-            idx, _ = pointops.knn_query(1, dense_point.coord, dense_point.offset, 
-                                        sparse_point.coord, sparse_point.offset)
-            target_idx = idx.long().squeeze() # Indices in Dense cloud corresponding to Sparse points
+            # Student Forward (Output is also SORTED/RE-ORDERED)
+            sparse_out = model.student.backbone(sparse_point)
+            if hasattr(model, 'up_cast'): 
+                sparse_out = model.up_cast(sparse_out)
             
-            # Filter: We only care about points that survived the drop AND are either Edge or Flat
-            # Check if the surviving points were Edge or Flat in the original cloud
-            is_edge = edge_mask[target_idx]
-            is_flat = flat_mask[target_idx]
+            feat_sparse = model.student.mask_head(sparse_out.feat)
+            feat_sparse = F.normalize(feat_sparse, dim=-1)
+
+            # --- D. Robust Matching (KNN) ---
+            # Match Sparse Output -> Dense Output to find correspondence
+            knn_idx, _ = pointops.knn_query(1, dense_out.coord, dense_out.offset, 
+                                            sparse_out.coord, sparse_out.offset)
+            target_idx = knn_idx.long().squeeze()
             
-            # Select samples
-            # 1. Edge Points
-            valid_edge_indices = torch.where(is_edge)[0]
-            if len(valid_edge_indices) > 50: # Limit samples per scene
-                valid_edge_indices = valid_edge_indices[:50]
+            # --- E. Collection Loop ---
+            # Iterate through Sparse points, find their Dense match, check if interesting (Edge/Flat)
+            # target_idx[s_idx] gives the index in 'dense_out'
+            
+            # Boolean masks for Sparse points based on their matched Dense parent
+            sparse_is_edge = edge_mask[target_idx]
+            sparse_is_flat = flat_mask[target_idx]
+            
+            # Collect Edges
+            valid_edge_s_indices = torch.where(sparse_is_edge)[0]
+            if len(valid_edge_s_indices) > 50: 
+                valid_edge_s_indices = valid_edge_s_indices[:50]
                 
-            for idx in valid_edge_indices:
-                # Dense representation of this point
-                collected_feats.append(dense_feats_all[target_idx[idx]].cpu().numpy())
-                collected_labels.append(0) # 0 = Dense Edge (Reference)
+            for s_idx in valid_edge_s_indices:
+                d_idx = target_idx[s_idx]
                 
-                # Sparse representation of the SAME point
-                collected_feats.append(sparse_feats_all[idx].cpu().numpy())
-                collected_labels.append(1) # 1 = Sparse Edge (Should align with 0)
-
-            # 2. Flat Points
-            valid_flat_indices = torch.where(is_flat)[0]
-            if len(valid_flat_indices) > 50:
-                valid_flat_indices = valid_flat_indices[:50]
-
-            for idx in valid_flat_indices:
-                collected_feats.append(dense_feats_all[target_idx[idx]].cpu().numpy())
-                collected_labels.append(2) # 2 = Dense Flat
+                # Pair: Dense (Reference) -> Label 0
+                collected_feats.append(feat_dense_all[d_idx].cpu().numpy())
+                collected_labels.append(0)
                 
-                collected_feats.append(sparse_feats_all[idx].cpu().numpy())
-                collected_labels.append(3) # 3 = Sparse Flat
+                # Pair: Sparse (Ours) -> Label 1
+                collected_feats.append(feat_sparse[s_idx].cpu().numpy())
+                collected_labels.append(1)
 
-            print(f"Collected points from scene {i}, Total points: {len(collected_feats)}")
+            # Collect Flats
+            valid_flat_s_indices = torch.where(sparse_is_flat)[0]
+            if len(valid_flat_s_indices) > 50: 
+                valid_flat_s_indices = valid_flat_s_indices[:50]
+                
+            for s_idx in valid_flat_s_indices:
+                d_idx = target_idx[s_idx]
+                
+                # Pair: Dense (Reference) -> Label 2
+                collected_feats.append(feat_dense_all[d_idx].cpu().numpy())
+                collected_labels.append(2)
+                
+                # Pair: Sparse (Ours) -> Label 3
+                collected_feats.append(feat_sparse[s_idx].cpu().numpy())
+                collected_labels.append(3)
+
+            print(f"[{i}] Collected total {len(collected_feats)} points so far...")
             
             if len(collected_feats) >= args.num_points_vis:
                 break
 
-    # --- E. Run t-SNE ---
+    if len(collected_feats) == 0:
+        print("Error: No points collected. Check drop rate or thresholds.")
+        return
+
+    # --- F. Run t-SNE ---
     print(f"=> Running t-SNE on {len(collected_feats)} features...")
     X = np.array(collected_feats)
     y = np.array(collected_labels)
@@ -189,51 +246,47 @@ def main():
     tsne = TSNE(n_components=2, init='pca', learning_rate='auto', random_state=42, perplexity=30)
     X_embedded = tsne.fit_transform(X)
 
-    # --- F. Plotting ---
+    # --- G. Plotting ---
     plt.figure(figsize=(10, 8))
     
-    # Define styles
-    # Dense Edge: Red Circle
-    # Sparse Edge: Red Cross (Should be near Red Circle)
-    # Dense Flat: Blue Circle
-    # Sparse Flat: Blue Cross (Should be near Blue Circle)
-    
     styles = [
-        {'mask': y==0, 'label': 'Dense Edge (Reference)', 'color': '#d62728', 'marker': 'o', 'alpha': 0.4, 's': 50}, # Red
-        {'mask': y==1, 'label': 'Sparse Edge (Ours)',      'color': '#d62728', 'marker': 'x', 'alpha': 1.0, 's': 60, 'linewidth': 2},
-        {'mask': y==2, 'label': 'Dense Flat (Reference)', 'color': '#1f77b4', 'marker': 'o', 'alpha': 0.4, 's': 50}, # Blue
-        {'mask': y==3, 'label': 'Sparse Flat (Ours)',      'color': '#1f77b4', 'marker': 'x', 'alpha': 1.0, 's': 60, 'linewidth': 2},
+        {'mask': y==0, 'label': 'Dense Edge (Reference)', 'color': '#d62728', 'marker': 'o', 'alpha': 0.4, 's': 50}, 
+        {'mask': y==1, 'label': 'Sparse Edge (Student)',  'color': '#d62728', 'marker': 'x', 'alpha': 1.0, 's': 60, 'linewidth': 2},
+        {'mask': y==2, 'label': 'Dense Flat (Reference)', 'color': '#1f77b4', 'marker': 'o', 'alpha': 0.4, 's': 50}, 
+        {'mask': y==3, 'label': 'Sparse Flat (Student)',  'color': '#1f77b4', 'marker': 'x', 'alpha': 1.0, 's': 60, 'linewidth': 2},
     ]
 
     for style in styles:
-        plt.scatter(
-            X_embedded[style['mask'], 0], 
-            X_embedded[style['mask'], 1], 
-            label=style['label'],
-            c=style['color'],
-            marker=style['marker'],
-            alpha=style['alpha'],
-            s=style['s'],
-            linewidths=style.get('linewidth', 1)
-        )
+        if style['mask'].sum() > 0:
+            plt.scatter(
+                X_embedded[style['mask'], 0], 
+                X_embedded[style['mask'], 1], 
+                label=style['label'],
+                c=style['color'],
+                marker=style['marker'],
+                alpha=style['alpha'],
+                s=style['s'],
+                linewidths=style.get('linewidth', 1)
+            )
 
-    # Draw lines connecting Dense and Sparse pairs to visualize alignment explicitly
-    # Since we added them in pairs (i, i+1), we can just iterate
-    # Only draw lines for a subset to avoid mess
+    # Draw lines connecting matched pairs
     print("=> Drawing connection lines...")
     num_pairs = len(X) // 2
-    for i in range(0, min(num_pairs, 200)): # Draw first 200 lines
+    
+    # Limit lines to avoid clutter
+    draw_limit = 200 
+    for i in range(0, min(num_pairs, draw_limit)):
         dense_idx = i * 2
         sparse_idx = i * 2 + 1
         
-        # Color based on class
+        # Color based on class (Red for Edge, Blue for Flat)
         line_color = '#d62728' if y[dense_idx] == 0 else '#1f77b4'
         
         plt.plot(
             [X_embedded[dense_idx, 0], X_embedded[sparse_idx, 0]],
             [X_embedded[dense_idx, 1], X_embedded[sparse_idx, 1]],
             color=line_color,
-            alpha=0.1, # Very faint lines
+            alpha=0.15,
             linewidth=1
         )
 
