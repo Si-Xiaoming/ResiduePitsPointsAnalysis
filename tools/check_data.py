@@ -134,13 +134,13 @@ if __name__ == "__main__":
     # ================= 配置区域 =================
     
     # 1. 源目录
-    source_dir = "/home/shsi/datasets/Point_Cloud/navarra-01/processed/val"
+    source_dir = "/home/shsi/datasets/Point_Cloud/residue/unused_pert100_gs01/processed/val"
     
     # 2. 目标目录 (移动目的地)
-    destination_dir = "/home/shsi/datasets/Point_Cloud/navarra-01/processed/val_trash"
+    destination_dir = "/home/shsi/datasets/Point_Cloud/residue/navarra_pert100_gs01/processed/train_small"
     
     # 3. 阈值大小 (单位 MB)
-    target_size_mb = 50  # 例如：1 MB
+    target_size_mb = 1  # 例如：1 MB
     
     # 4. 比较条件
     # '>'  : 找出大于该大小的文件夹
@@ -150,7 +150,7 @@ if __name__ == "__main__":
     # 5. 运行模式 (关键设置!)
     # True  : 只查看，不移动 (安全模式，先运行这个看看结果)
     # False : 实际执行移动操作
-    is_dry_run = False  
+    is_dry_run = True  
     
     # ===========================================
 

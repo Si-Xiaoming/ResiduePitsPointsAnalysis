@@ -11,18 +11,26 @@ num_points_per_step = 80000
 grid_size = 0.1
 gradient_accumulation_steps=1
 enable_wandb = True
-wandb_project = "cept-seg" # custom your project name e.g. Sonata, PTv3
+wandb_project = "residue-seg" # custom your project name e.g. Sonata, PTv3
 wandb_key = "8e059ab5df68865b71cfae546e75a48702a68d65"  # wandb token, default is None. If None, login with `wandb login` in your terminal
 seed=2545321
 
-# weight = "/home/shsi/outputs/on_sbatch/0-0_density/model/epoch_10.pth"
-# weight = "/home/shsi/outputs/on_sbatch/monitor_gs02/model/epoch_10.pth"  1-2-pre
-weight = "/home/shsi/outputs/residue/residue-pretrain/1-3-pre2/model/epoch_10.pth"
+# ------------------------------- residue pretrain -------------------------
+density_weight = "/home/shsi/outputs/on_sbatch/0-0_density/model/epoch_10.pth"
+std_weight = "/home/shsi/outputs/residue/residue-pretrain/1-3-pre2/model/epoch_10.pth"
+
+navarra_pert100_gs01="/home/shsi/datasets/Point_Cloud/residue/navarra_pert100_gs01"
+navarra_pert100_gs05="/home/shsi/datasets/Point_Cloud/residue/navarra_pert100_gs05"
+navarra_pert100_gs10="/home/shsi/datasets/Point_Cloud/residue/navarra_pert100_gs10"
+navarra_pert001_gs01="/home/shsi/datasets/Point_Cloud/residue/navarra_pert001_gs01"
+navarra_pert005_gs01="/home/shsi/datasets/Point_Cloud/residue/navarra_pert005_gs01"
+navarra_pert010_gs01="/home/shsi/datasets/Point_Cloud/residue/navarra_pert010_gs01"
+# -------------------------------------------------------------------------------
+
+
 dataset_type = "NavarraDataset"
-data_root = "/home/shsi/datasets/Point_Cloud/navarra-01"
-#"/home/shsi/datasets/Point_Cloud/navarra_ft"
-# /home/shsi/datasets/Point_Cloud/navarra-05
-# "/home/shsi/datasets/Point_Cloud/unused_data" 
+data_root = navarra_pert010_gs01
+weight = None
 
 epoch = 400 # 修改了!!
 eval_epoch = 20
@@ -60,17 +68,18 @@ model = dict(
         traceable=False,
         mask_token=False,
         enc_mode=False,
-        freeze_encoder=True,
+        freeze_encoder=False,
     ),
     criteria=[
-        # dict(type="CrossEntropyLoss", loss_weight=1.0, ignore_index=-1), #  , weight=class_weights
-        
-        dict(type="Poly1CrossEntropyLoss", 
-         loss_weight=1.0, 
-         ignore_index=-1, 
-         epsilon=1.0,
-         weight=class_weights), # class_weights   None
-
+        dict(
+            type="CrossEntropyLoss", loss_weight=1.0, ignore_index=-1
+            , weight=class_weights
+            ),
+        # dict(type="Poly1CrossEntropyLoss", 
+        #  loss_weight=1.0, 
+        #  ignore_index=-1, 
+        #  epsilon=1.0,
+        #  weight=class_weights),
         dict(type="LovaszLoss", mode="multiclass", loss_weight=1.0, ignore_index=-1),
     ],
     freeze_backbone=False,
@@ -170,7 +179,7 @@ data = dict(
     ),
     test=dict(
         type=dataset_type,
-        split="test",
+        split="val",
         data_root=data_root,
         transform=[
             dict(type="CenterShift", apply_z=True),

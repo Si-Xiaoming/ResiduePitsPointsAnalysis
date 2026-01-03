@@ -25,7 +25,7 @@ wandb_project = "residue-backbone" # custom your project name e.g. Sonata, PTv3
 wandb_key = "8e059ab5df68865b71cfae546e75a48702a68d65"  # wandb token, default is None. If None, login with `wandb login` in your terminal
 
 dataset_type = "NavarraDataset"
-data_root ="/home/shsi/datasets/Point_Cloud/navarra-01"
+data_root ="/home/shsi/datasets/Point_Cloud/residue/navarra_pert100_gs01/"
 # data_root = "/beegfs-scratch/shsi/datasets/pointclouds/residue/navarra-01"
 
 mix_prob = 0.8

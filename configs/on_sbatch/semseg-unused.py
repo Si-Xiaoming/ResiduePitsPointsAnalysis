@@ -11,20 +11,18 @@ num_points_per_step = 80000
 grid_size = 0.1  #0.1
 gradient_accumulation_steps=1
 enable_wandb = True
-wandb_project = "cept-seg" # custom your project name e.g. Sonata, PTv3
+wandb_project = "residue-seg" # custom your project name e.g. Sonata, PTv3
 wandb_key = "8e059ab5df68865b71cfae546e75a48702a68d65"  # wandb token, default is None. If None, login with `wandb login` in your terminal
 seed=2545321
 
-# weight = "/home/shsi/outputs/on_sbatch/0-0_density/model/epoch_10.pth"
-#weight = "/home/shsi/outputs/on_sbatch/monitor_gs02/model/epoch_10.pth"
+# ------------------------------- residue pretrain -------------------------
+density_weight = "/home/shsi/outputs/on_sbatch/0-0_density/model/epoch_10.pth"
+std_weight = "/home/shsi/outputs/residue/residue-pretrain/1-3-pre2/model/epoch_10.pth"
 
-# 1-2-pre 1-3-pre2
-weight = "/home/shsi/outputs/residue/residue-pretrain/1-2-pre/model/epoch_10.pth"
+weight = density_weight
 dataset_type = "NavarraDataset"
-data_root = "/home/shsi/datasets/Point_Cloud/unused_data" 
-#"/home/shsi/datasets/Point_Cloud/navarra_ft"
-# /home/shsi/datasets/Point_Cloud/navarra-05
-# "/home/shsi/datasets/Point_Cloud/unused_data" 
+data_root = "/home/shsi/datasets/Point_Cloud/residue/unused_pert100_gs01" 
+
 
 epoch = 400 # 修改了!!
 eval_epoch = 20
@@ -62,15 +60,18 @@ model = dict(
         traceable=False,
         mask_token=False,
         enc_mode=False,
-        freeze_encoder=True,
+        freeze_encoder=False,  # True
     ),
     criteria=[
-        dict(type="CrossEntropyLoss", loss_weight=1.0, ignore_index=-1), #  , weight=class_weights
-        dict(type="Poly1CrossEntropyLoss", 
-         loss_weight=1.0, 
-         ignore_index=-1, 
-         epsilon=1.0,
-         weight=class_weights), # class_weights   None
+        dict(
+            type="CrossEntropyLoss", loss_weight=1.0, ignore_index=-1
+            , weight=class_weights
+            ),
+        # dict(type="Poly1CrossEntropyLoss", 
+        #  loss_weight=1.0, 
+        #  ignore_index=-1, 
+        #  epsilon=1.0,
+        #  weight=class_weights),
         dict(type="LovaszLoss", mode="multiclass", loss_weight=1.0, ignore_index=-1),
     ],
     freeze_backbone=False,
