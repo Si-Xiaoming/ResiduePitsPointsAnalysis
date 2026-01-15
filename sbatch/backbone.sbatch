@@ -1,5 +1,5 @@
 #!/bin/bash
-#SBATCH --job-name=backbone_ptv3-5
+#SBATCH --job-name=backbone_ptv3-10
 #SBATCH --mail-type=END,FAIL
 #SBATCH --mail-user=d119918@studenti.polito.it
 #SBATCH --partition=gpu_a40

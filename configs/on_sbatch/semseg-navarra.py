@@ -8,7 +8,7 @@ clip_grad = 3.0
 empty_cache = False
 enable_amp = True
 num_points_per_step = 80000
-grid_size = 1.0
+grid_size = 2.0
 gradient_accumulation_steps=4 # 1
 enable_wandb = True
 wandb_project = "residue-seg" # custom your project name e.g. Sonata, PTv3
@@ -23,6 +23,8 @@ mystd_weight = "/home/shsi/outputs/on_sbatch/monitor_gs02/model/epoch_10.pth"
 navarra_pert100_gs01="/home/shsi/datasets/Point_Cloud/residue/navarra_pert100_gs01"
 navarra_pert100_gs05="/home/shsi/datasets/Point_Cloud/residue/navarra_pert100_gs05"
 navarra_pert100_gs10="/home/shsi/datasets/Point_Cloud/residue/navarra_pert100_gs10"
+navarra_pert100_gs20="/home/shsi/datasets/Point_Cloud/residue/navarra_pert100_gs20"
+
 navarra_pert001_gs01="/home/shsi/datasets/Point_Cloud/residue/navarra_pert001_gs01"
 navarra_pert005_gs01="/home/shsi/datasets/Point_Cloud/residue/navarra_pert005_gs01"
 navarra_pert010_gs01="/home/shsi/datasets/Point_Cloud/residue/navarra_pert010_gs01"
@@ -30,8 +32,8 @@ navarra_pert010_gs01="/home/shsi/datasets/Point_Cloud/residue/navarra_pert010_gs
 
 
 dataset_type = "NavarraDataset"
-data_root = navarra_pert100_gs10
-weight = mystd_weight
+data_root = navarra_pert100_gs20
+weight = std_weight
 
 epoch = 400 # 修改了!!
 eval_epoch = 20

@@ -11,12 +11,11 @@
 #SBATCH --output=logs/preprocess-%j.out
 #SBATCH --error=logs/preprocess-%j.err
 
-# 1. 激活环境
+
 source activate pointcept
 
 
-# 2. 设置工作目录 (请确保此路径是完全正确的绝对路径)
-# 根据你提供的上下文，我移除了报错日志中那个看起来错误的 "LTN_SGG_VG"
+
 WORK_DIR="/home/shsi/codes/ResiduePitsPointsAnalysis"
 
 if [ ! -d "$WORK_DIR" ]; then
@@ -27,20 +26,20 @@ fi
 cd "$WORK_DIR"
 echo "当前工作目录: $(pwd)"
 
-# 3. 设置环境变量
+
 export PYTHONPATH=./
 
-# 4. 设置参数
+
 # /home/shsi/datasets/Point_Cloud/navarra17
 # /home/shsi/datasets/Point_Cloud/unused_data
 # /home/shsi/datasets/Point_Cloud/vis-unused
-RAW_DATA_DIR="/home/shsi/datasets/Point_Cloud/residue/navarra_pert100_gs10"
-GRID_SIZE=1.0
-TILE_SIZE=-250
+RAW_DATA_DIR="/home/shsi/datasets/Point_Cloud/navarra17"
+GRID_SIZE=2.0
+TILE_SIZE=500
 HAS_LABEL=True
 TILE_ORIENT=True
 
-# 5. 检查 Python 脚本是否存在  pointcept/datasets/preprocessing/navarra/navarra.py
+
 # pointcept/datasets/preprocessing/farmland/preprocess_unused_land.py
 SCRIPT_PATH="pointcept/datasets/preprocessing/navarra/navarra.py"
 if [ ! -f "$SCRIPT_PATH" ]; then
