@@ -2,7 +2,7 @@ import os
 import numpy as np
 
 # 定义 processed 下的 train 目录路径
-dataset_path = "/home/shsi/datasets/Point_Cloud/residue/unused_pert100_gs01/processed/val"
+dataset_path = "/home/shsi/datasets/Point_Cloud/residue/navarra_pert100_gs01/processed/train"
 
 def analyze_segments(base_path):
     print(f"{'Data Folder':<20} | {'Unique Labels'}")

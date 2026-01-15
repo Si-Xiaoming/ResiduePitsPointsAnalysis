@@ -1,15 +1,15 @@
 _base_ = ["../_base_/default_runtime.py"]
 
 # misc custom setting
-batch_size = 4  # bs: total bs in all gpus
+batch_size = 1  # bs: total bs in all gpus 4
 num_worker = 4
 mix_prob = 0.8
 clip_grad = 3.0
 empty_cache = False
 enable_amp = True
 num_points_per_step = 80000
-grid_size = 0.1
-gradient_accumulation_steps=1
+grid_size = 1.0
+gradient_accumulation_steps=4 # 1
 enable_wandb = True
 wandb_project = "residue-seg" # custom your project name e.g. Sonata, PTv3
 wandb_key = "8e059ab5df68865b71cfae546e75a48702a68d65"  # wandb token, default is None. If None, login with `wandb login` in your terminal
@@ -18,6 +18,7 @@ seed=2545321
 # ------------------------------- residue pretrain -------------------------
 density_weight = "/home/shsi/outputs/on_sbatch/0-0_density/model/epoch_10.pth"
 std_weight = "/home/shsi/outputs/residue/residue-pretrain/1-3-pre2/model/epoch_10.pth"
+mystd_weight = "/home/shsi/outputs/on_sbatch/monitor_gs02/model/epoch_10.pth"
 
 navarra_pert100_gs01="/home/shsi/datasets/Point_Cloud/residue/navarra_pert100_gs01"
 navarra_pert100_gs05="/home/shsi/datasets/Point_Cloud/residue/navarra_pert100_gs05"
@@ -29,8 +30,8 @@ navarra_pert010_gs01="/home/shsi/datasets/Point_Cloud/residue/navarra_pert010_gs
 
 
 dataset_type = "NavarraDataset"
-data_root = navarra_pert010_gs01
-weight = None
+data_root = navarra_pert100_gs10
+weight = mystd_weight
 
 epoch = 400 # 修改了!!
 eval_epoch = 20

@@ -18,9 +18,8 @@ seed=2545321
 # ------------------------------- residue pretrain -------------------------
 density_weight = "/home/shsi/outputs/on_sbatch/0-0_density/model/epoch_10.pth"
 std_weight = "/home/shsi/outputs/residue/residue-pretrain/1-3-pre2/model/epoch_10.pth"
-mystd_weight = "/home/shsi/outputs/on_sbatch/monitor_gs02/model/epoch_10.pth"
 
-weight = mystd_weight
+weight = None
 dataset_type = "NavarraDataset"
 data_root = "/home/shsi/datasets/Point_Cloud/residue/unused_pert100_gs01" 
 
@@ -68,14 +67,12 @@ model = dict(
             type="CrossEntropyLoss", loss_weight=1.0, ignore_index=-1
             , weight=class_weights
             ),
-
         # dict(type="Poly1CrossEntropyLoss", 
         #  loss_weight=1.0, 
         #  ignore_index=-1, 
         #  epsilon=1.0,
         #  weight=class_weights),
-
-        # dict(type="LovaszLoss", mode="multiclass", loss_weight=1.0, ignore_index=-1),
+        dict(type="LovaszLoss", mode="multiclass", loss_weight=1.0, ignore_index=-1),
     ],
     freeze_backbone=False,
 )
@@ -86,7 +83,7 @@ optimizer = dict(type="AdamW", lr=0.002, weight_decay=0.02)
 scheduler = dict(
     type="OneCycleLR",
     max_lr=[0.002, 0.0002],
-    pct_start=0.05,
+    pct_start=0.1,
     anneal_strategy="cos",
     div_factor=10.0,
     final_div_factor=1000.0,
@@ -110,17 +107,12 @@ data = dict(
         data_root=data_root,
         transform=[
             dict(type="CenterShift", apply_z=True),
-            dict(
-                type="RandomDropout", dropout_ratio=0.2, dropout_application_ratio=1.0
-            ),
-            # dict(type="RandomRotateTargetAngle", angle=(1/2, 1, 3/2), center=[0, 0, 0], axis="z", p=0.75),
-            dict(type="RandomRotate", angle=[-1, 1], axis="z", center=[0, 0, 0], p=0.5),
-            dict(type="RandomRotate", angle=[-1 / 64, 1 / 64], axis="x", p=0.5),
-            dict(type="RandomRotate", angle=[-1 / 64, 1 / 64], axis="y", p=0.5),
+
+
             dict(type="RandomScale", scale=[0.9, 1.1]),
             # dict(type="RandomShift", shift=[0.2, 0.2, 0.2]),
             dict(type="RandomFlip", p=0.5),
-            dict(type="RandomJitter", sigma=0.005, clip=0.02),
+
             # dict(type="ElasticDistortion", distortion_params=[[0.2, 0.4], [0.8, 1.6]]),
             dict(type="ChromaticAutoContrast", p=0.2, blend_factor=None),
             dict(type="ChromaticTranslation", p=0.95, ratio=0.05),

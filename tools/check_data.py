@@ -134,10 +134,10 @@ if __name__ == "__main__":
     # ================= 配置区域 =================
     
     # 1. 源目录
-    source_dir = "/home/shsi/datasets/Point_Cloud/residue/unused_pert100_gs01/processed/val"
+    source_dir = "/home/shsi/datasets/Point_Cloud/residue/navarra_pert100_gs20/processed/train"
     
     # 2. 目标目录 (移动目的地)
-    destination_dir = "/home/shsi/datasets/Point_Cloud/residue/navarra_pert100_gs01/processed/train_small"
+    destination_dir = "/home/shsi/datasets/Point_Cloud/residue/navarra_pert100_gs20/processed/train_small"
     
     # 3. 阈值大小 (单位 MB)
     target_size_mb = 1  # 例如：1 MB

@@ -1,5 +1,5 @@
 #!/bin/bash
-#SBATCH --job-name=4-12
+#SBATCH --job-name=1-7
 #SBATCH --mail-type=END,FAIL
 #SBATCH --mail-user=d119918@studenti.polito.it
 #SBATCH --partition=gpu_a40
@@ -19,7 +19,7 @@ echo "当前工作目录: $(pwd)"
 
 
 CONFIG_PATH=configs/on_sbatch/semseg-navarra.py
-# semseg-navarra.py     semseg-unused.py
+# semseg-navarra.py     semseg-unused.py  unused2
 SAVE_PATH=/home/shsi/outputs/residue/residue-segment
 # 输出job name
 echo "Job Name: $SLURM_JOB_NAME"

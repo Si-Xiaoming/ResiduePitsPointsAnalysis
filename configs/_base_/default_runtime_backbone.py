@@ -88,7 +88,7 @@ data = dict(
                 mode="train",
                 return_grid_coord=True,
             ),
-            dict(type="SphereCrop", point_max=num_points_per_step, mode="class_balanced"),
+            dict(type="SphereCrop", point_max=num_points_per_step, mode="center"),
             dict(type="CenterShift", apply_z=False),
             # dict(type="NormalizeColor"),
             # dict(type="ShufflePoint"),
