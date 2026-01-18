@@ -29,10 +29,19 @@ model = dict(
         drop_path=0.3,
         shuffle_orders=True,
         pre_norm=True,
+
+
         enable_rpe=False, # True
         enable_flash=True, # False
         upcast_attention=False, # True
         upcast_softmax=False, # True
+
+        # enable_rpe=True, # True
+        # enable_flash=False, # False
+        # upcast_attention=True, # True
+        # upcast_softmax=True, # True
+
+
         cls_mode=False, 
         pdnorm_bn=False,
         pdnorm_ln=False,
@@ -52,13 +61,13 @@ model = dict(
 optimizer = dict(type="AdamW", lr=0.006, weight_decay=0.05)
 scheduler = dict(
     type="OneCycleLR",
-    max_lr=[0.006], # , 0.0006
+    max_lr=[0.006, 0.0006], # , 0.0006
     pct_start=0.05,
     anneal_strategy="cos",
     div_factor=10.0,
     final_div_factor=1000.0,
 )
-# param_dicts = [dict(keyword="block", lr=0.0006)]
+param_dicts = [dict(keyword="block", lr=0.0006)]
 
 
 

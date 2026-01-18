@@ -1,5 +1,5 @@
 #!/bin/bash
-#SBATCH --job-name=backbone_ptv2-12
+#SBATCH --job-name=subset-4-11
 #SBATCH --mail-type=END,FAIL
 #SBATCH --mail-user=d119918@studenti.polito.it
 #SBATCH --partition=gpu_a40
@@ -18,9 +18,9 @@ export PYTHONPATH=./
 echo "当前工作目录: $(pwd)"
 
 
-CONFIG_PATH=configs/exp_paper/backbone_ptv2.py
-# semseg-navarra.py     semseg-std2.py
-SAVE_PATH=/home/shsi/outputs/residue/residue-backbone
+CONFIG_PATH=configs/subset_test/all-navarra.py
+# all-navarra.py     decoder-navarra.py   linear-navarra.py
+SAVE_PATH=/home/shsi/outputs/residue/residue-segment
 # 输出job name
 echo "Job Name: $SLURM_JOB_NAME"
 SAVE_PATH=${SAVE_PATH}/${SLURM_JOB_NAME}
