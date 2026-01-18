@@ -1,5 +1,5 @@
 #!/bin/bash
-#SBATCH --job-name=backbone_ptv2-12
+#SBATCH --job-name=backbone_ptv3_long
 #SBATCH --mail-type=END,FAIL
 #SBATCH --mail-user=d119918@studenti.polito.it
 #SBATCH --partition=gpu_a40
@@ -18,7 +18,7 @@ export PYTHONPATH=./
 echo "当前工作目录: $(pwd)"
 
 
-CONFIG_PATH=configs/exp_paper/backbone_ptv2.py
+CONFIG_PATH=configs/exp_paper/backbone_ptv3.py
 # semseg-navarra.py     semseg-std2.py
 SAVE_PATH=/home/shsi/outputs/residue/residue-backbone
 # 输出job name
