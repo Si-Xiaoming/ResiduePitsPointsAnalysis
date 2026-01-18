@@ -1,0 +1,61 @@
+[2026-01-18 23:33:24,441 INFO test_laz.py line 27 1120381] => Building model ...
+[2026-01-18 23:33:26,212 INFO test_laz.py line 55 1120381] => Loading weight from: /home/shsi/outputs/residue/residue-segment/subset-4-11/model/model_best.pth
+/home/shsi/codes/ResiduePitsPointsAnalysis/pointcept/engines/test_laz.py:56: FutureWarning: You are using `torch.load` with `weights_only=False` (the current default value), which uses the default pickle module implicitly. It is possible to construct malicious pickle data which will execute arbitrary code during unpickling (See https://github.com/pytorch/pytorch/blob/main/SECURITY.md#untrusted-models for more details). In a future release, the default value for `weights_only` will be flipped to `True`. This limits the functions that could be executed during unpickling. Arbitrary objects will no longer be allowed to be loaded via this mode unless they are explicitly allowlisted by the user via `torch.serialization.add_safe_globals`. We recommend you start setting `weights_only=True` for any use case where you don't have full control of the loaded file. Please open an issue on GitHub for any issues related to this experimental feature.
+  checkpoint = torch.load(self.cfg.weight, map_location="cpu")
+[2026-01-18 23:33:33,968 INFO test_laz.py line 34 1120381] => Building test dataset & dataloader ...
+[2026-01-18 23:33:33,969 INFO defaults.py line 70 1120381] Totally 0 x 1 samples in  test set.
+[2026-01-18 23:33:36,374 INFO test_laz.py line 69 1120381] >>>>>>>>>>>>>>>> Start Spatial Tiling Inference >>>>>>>>>>>>>>>>
+[2026-01-18 23:33:36,378 INFO test_laz.py line 79 1120381] Total Scene Points: 3395752
+/opt/conda/conda-bld/pytorch_1728929546833/work/aten/src/ATen/native/cuda/Loss.cu:250: nll_loss_forward_reduce_cuda_kernel_2d: block: [0,0,0], thread: [4,0,0] Assertion `t >= 0 && t < n_classes` failed.
+/opt/conda/conda-bld/pytorch_1728929546833/work/aten/src/ATen/native/cuda/Loss.cu:250: nll_loss_forward_reduce_cuda_kernel_2d: block: [0,0,0], thread: [7,0,0] Assertion `t >= 0 && t < n_classes` failed.
+/opt/conda/conda-bld/pytorch_1728929546833/work/aten/src/ATen/native/cuda/Loss.cu:250: nll_loss_forward_reduce_cuda_kernel_2d: block: [0,0,0], thread: [8,0,0] Assertion `t >= 0 && t < n_classes` failed.
+/opt/conda/conda-bld/pytorch_1728929546833/work/aten/src/ATen/native/cuda/Loss.cu:250: nll_loss_forward_reduce_cuda_kernel_2d: block: [0,0,0], thread: [9,0,0] Assertion `t >= 0 && t < n_classes` failed.
+/opt/conda/conda-bld/pytorch_1728929546833/work/aten/src/ATen/native/cuda/Loss.cu:250: nll_loss_forward_reduce_cuda_kernel_2d: block: [0,0,0], thread: [10,0,0] Assertion `t >= 0 && t < n_classes` failed.
+/opt/conda/conda-bld/pytorch_1728929546833/work/aten/src/ATen/native/cuda/Loss.cu:250: nll_loss_forward_reduce_cuda_kernel_2d: block: [0,0,0], thread: [11,0,0] Assertion `t >= 0 && t < n_classes` failed.
+/opt/conda/conda-bld/pytorch_1728929546833/work/aten/src/ATen/native/cuda/Loss.cu:250: nll_loss_forward_reduce_cuda_kernel_2d: block: [0,0,0], thread: [12,0,0] Assertion `t >= 0 && t < n_classes` failed.
+/opt/conda/conda-bld/pytorch_1728929546833/work/aten/src/ATen/native/cuda/Loss.cu:250: nll_loss_forward_reduce_cuda_kernel_2d: block: [0,0,0], thread: [13,0,0] Assertion `t >= 0 && t < n_classes` failed.
+/opt/conda/conda-bld/pytorch_1728929546833/work/aten/src/ATen/native/cuda/Loss.cu:250: nll_loss_forward_reduce_cuda_kernel_2d: block: [0,0,0], thread: [14,0,0] Assertion `t >= 0 && t < n_classes` failed.
+/opt/conda/conda-bld/pytorch_1728929546833/work/aten/src/ATen/native/cuda/Loss.cu:250: nll_loss_forward_reduce_cuda_kernel_2d: block: [0,0,0], thread: [15,0,0] Assertion `t >= 0 && t < n_classes` failed.
+/opt/conda/conda-bld/pytorch_1728929546833/work/aten/src/ATen/native/cuda/Loss.cu:250: nll_loss_forward_reduce_cuda_kernel_2d: block: [0,0,0], thread: [16,0,0] Assertion `t >= 0 && t < n_classes` failed.
+/opt/conda/conda-bld/pytorch_1728929546833/work/aten/src/ATen/native/cuda/Loss.cu:250: nll_loss_forward_reduce_cuda_kernel_2d: block: [0,0,0], thread: [17,0,0] Assertion `t >= 0 && t < n_classes` failed.
+/opt/conda/conda-bld/pytorch_1728929546833/work/aten/src/ATen/native/cuda/Loss.cu:250: nll_loss_forward_reduce_cuda_kernel_2d: block: [0,0,0], thread: [18,0,0] Assertion `t >= 0 && t < n_classes` failed.
+/opt/conda/conda-bld/pytorch_1728929546833/work/aten/src/ATen/native/cuda/Loss.cu:250: nll_loss_forward_reduce_cuda_kernel_2d: block: [0,0,0], thread: [19,0,0] Assertion `t >= 0 && t < n_classes` failed.
+/opt/conda/conda-bld/pytorch_1728929546833/work/aten/src/ATen/native/cuda/Loss.cu:250: nll_loss_forward_reduce_cuda_kernel_2d: block: [0,0,0], thread: [20,0,0] Assertion `t >= 0 && t < n_classes` failed.
+/opt/conda/conda-bld/pytorch_1728929546833/work/aten/src/ATen/native/cuda/Loss.cu:250: nll_loss_forward_reduce_cuda_kernel_2d: block: [0,0,0], thread: [22,0,0] Assertion `t >= 0 && t < n_classes` failed.
+/opt/conda/conda-bld/pytorch_1728929546833/work/aten/src/ATen/native/cuda/Loss.cu:250: nll_loss_forward_reduce_cuda_kernel_2d: block: [0,0,0], thread: [23,0,0] Assertion `t >= 0 && t < n_classes` failed.
+/opt/conda/conda-bld/pytorch_1728929546833/work/aten/src/ATen/native/cuda/Loss.cu:250: nll_loss_forward_reduce_cuda_kernel_2d: block: [0,0,0], thread: [24,0,0] Assertion `t >= 0 && t < n_classes` failed.
+/opt/conda/conda-bld/pytorch_1728929546833/work/aten/src/ATen/native/cuda/Loss.cu:250: nll_loss_forward_reduce_cuda_kernel_2d: block: [0,0,0], thread: [25,0,0] Assertion `t >= 0 && t < n_classes` failed.
+Traceback (most recent call last):
+  File "/home/shsi/codes/ResiduePitsPointsAnalysis/tools/test.py", line 39, in <module>
+    main()
+  File "/home/shsi/codes/ResiduePitsPointsAnalysis/tools/test.py", line 28, in main
+    launch(
+  File "/home/shsi/codes/ResiduePitsPointsAnalysis/pointcept/engines/launch.py", line 89, in launch
+    main_func(*cfg)
+  File "/home/shsi/codes/ResiduePitsPointsAnalysis/tools/test.py", line 21, in main_worker
+    tester.test()
+  File "/home/shsi/codes/ResiduePitsPointsAnalysis/pointcept/engines/test_laz.py", line 94, in test
+    output_dict = self.model(input_dict)
+  File "/home/shsi/.conda/envs/pointcept/lib/python3.10/site-packages/torch/nn/modules/module.py", line 1736, in _wrapped_call_impl
+    return self._call_impl(*args, **kwargs)
+  File "/home/shsi/.conda/envs/pointcept/lib/python3.10/site-packages/torch/nn/modules/module.py", line 1747, in _call_impl
+    return forward_call(*args, **kwargs)
+  File "/home/shsi/codes/ResiduePitsPointsAnalysis/pointcept/models/default.py", line 87, in forward
+    loss = self.criteria(seg_logits, input_dict["segment"])
+  File "/home/shsi/codes/ResiduePitsPointsAnalysis/pointcept/models/losses/builder.py", line 30, in __call__
+    loss += c(pred, target)
+  File "/home/shsi/.conda/envs/pointcept/lib/python3.10/site-packages/torch/nn/modules/module.py", line 1736, in _wrapped_call_impl
+    return self._call_impl(*args, **kwargs)
+  File "/home/shsi/.conda/envs/pointcept/lib/python3.10/site-packages/torch/nn/modules/module.py", line 1747, in _call_impl
+    return forward_call(*args, **kwargs)
+  File "/home/shsi/codes/ResiduePitsPointsAnalysis/pointcept/models/losses/lovasz.py", line 248, in forward
+    loss = _lovasz_softmax(
+  File "/home/shsi/codes/ResiduePitsPointsAnalysis/pointcept/models/losses/lovasz.py", line 111, in _lovasz_softmax
+    *_flatten_probas(probas, labels, ignore),
+  File "/home/shsi/codes/ResiduePitsPointsAnalysis/pointcept/models/losses/lovasz.py", line 182, in _flatten_probas
+    vprobas = probas[valid]
+RuntimeError: CUDA error: device-side assert triggered
+CUDA kernel errors might be asynchronously reported at some other API call, so the stacktrace below might be incorrect.
+For debugging consider passing CUDA_LAUNCH_BLOCKING=1
+Compile with `TORCH_USE_CUDA_DSA` to enable device-side assertions.
+

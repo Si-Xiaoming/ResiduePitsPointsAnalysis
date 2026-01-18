@@ -116,38 +116,6 @@ data = dict(
                 feat_keys=("coord", "color"),
             )
         ],
-        test_mode=True,
-        test_cfg=dict(
-            voxelize=dict(
-                type="GridSample",
-                grid_size=grid_size,
-                hash_type="fnv",
-                mode="train",
-                # keys=("coord", "color"),
-                return_grid_coord=True,
-            ),
-            crop=None,
-            post_transform=[
-                dict(type="CenterShift", apply_z=False),
-                dict(type="ToTensor"),
-                dict(
-                    type="Collect",
-                    keys=("coord", "grid_coord", "index"),
-                    feat_keys=("coord", "color"),
-                ),
-            ],
-            aug_transform=[
-                [dict(type="RandomScale", scale=[0.9, 0.9])],
-                [dict(type="RandomScale", scale=[0.95, 0.95])],
-                [dict(type="RandomScale", scale=[1, 1])],
-                [dict(type="RandomScale", scale=[1.05, 1.05])],
-                [dict(type="RandomScale", scale=[1.1, 1.1])],
-            ],
-        num_points_per_block=num_points_per_block,
-        overlap_ratio=overlap_ratio,
-        grid_size=grid_size,
-
-    ),
     ),
 )
 

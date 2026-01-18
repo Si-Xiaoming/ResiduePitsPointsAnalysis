@@ -22,23 +22,24 @@ class SemSegTesterLaz:
             file_mode="a" if cfg.resume else "w",
         )
         
-        # 1. Build Model
         if model is None:
             self.logger.info("=> Building model ...")
             self.model = self.build_model()
         else:
             self.model = model
 
-        # 2. Build Dataset & Loader
         if test_loader is None:
             self.logger.info("=> Building test dataset & dataloader ...")
             self.dataset = build_dataset(cfg.data.test)
-            # 这里的 batch_size 可以大于1，表示同时推理多个空间块
+            
+            num_workers = cfg.get('num_worker_test', cfg.get('num_workers', 4))
+            batch_size = cfg.get('batch_size_test_per_gpu', cfg.get('batch_size', 1))
+
             self.test_loader = torch.utils.data.DataLoader(
                 self.dataset,
-                batch_size=cfg.batch_size_test_per_gpu, 
+                batch_size=batch_size, 
                 shuffle=False,
-                num_workers=cfg.num_worker_test,
+                num_workers=num_workers,
                 pin_memory=True,
                 collate_fn=collate_fn, 
             )
@@ -56,6 +57,9 @@ class SemSegTesterLaz:
                     key = key[7:]
                 weight[key] = value
             model.load_state_dict(weight, strict=True)
+        else:
+            self.logger.warning(f"=> No checkpoint found at '{self.cfg.weight}'. Using random init.")
+            
         return create_ddp_model(model.cuda(), broadcast_buffers=False)
 
     def test(self):
@@ -65,75 +69,88 @@ class SemSegTesterLaz:
         save_path = os.path.join(self.cfg.save_path, "result_laz")
         make_dirs(save_path)
 
-        # 获取全场点数，用于初始化全局结果容器
-        # 由于我们只有一个文件，直接从 dataset 拿全场信息
         total_points = self.dataset.pos.shape[0]
         num_classes = self.cfg.data.num_classes
         
         self.logger.info(f"Total Scene Points: {total_points}")
         
-        # 全局 Logits 累加器 (FP16节省内存，如果内存够大可用FP32)
-        # 这里的 index 对应原始点云的行号
         global_logits = torch.zeros((total_points, num_classes), dtype=torch.float16, device='cpu')
-        # 计数器，用于处理重叠区域的平均
-        global_counts = torch.zeros((total_points), dtype=torch.int8, device='cpu')
+        global_counts = torch.zeros((total_points), dtype=torch.int16, device='cpu')
 
         start_time = time.time()
         
-        # 遍历所有空间块 (Blocks)
         for idx, input_dict in enumerate(self.test_loader):
-            # input_dict 包含了一个或多个 Block 的数据
+            # 移除 segment 防止 loss 计算错误
+            if "segment" in input_dict:
+                del input_dict["segment"]
+
             for key in input_dict.keys():
                 if isinstance(input_dict[key], torch.Tensor):
                     input_dict[key] = input_dict[key].cuda(non_blocking=True)
             
             with torch.no_grad():
                 output_dict = self.model(input_dict)
-                pred_part = output_dict["seg_logits"] # (N_batch_points, C)
+                pred_part = output_dict["seg_logits"] 
                 
-            # 将预测结果填回全局容器
-            # input_dict["index"] 是我们在 Dataset 里塞进去的全局索引
-            # 注意：GridSample 可能会打乱块内的顺序，或者丢弃点（如果用了 voxelize）
-            # 但只要 transforms 里有 GridSample，它就会处理 coordinate 和 feature
-            # 关键：我们必须确保 input_dict["index"] 能够对应上 pred_part 的每一行
-            
-            # 如果你在 transforms 里用了 GridSample(mode='test')，
-            # 那么 input_dict["index"] 是被 GridSample 处理过后的索引，
-            # 它直接指向原始点云的 ID，无需额外映射。
-            
+            if "inverse" in input_dict:
+                inverse = input_dict["inverse"]
+                pred_expanded = pred_part[inverse]
+            else:
+                pred_expanded = pred_part
+
             indices = input_dict["index"].detach().cpu()
-            preds = pred_part.detach().cpu().half()
+            preds = pred_expanded.detach().cpu().half()
             
-            # 累加 Logits (Voting)
-            # 注意处理索引越界或形状不匹配（理论上不应发生）
+            if indices.shape[0] != preds.shape[0]:
+                self.logger.warning(f"Shape mismatch: indices {indices.shape} vs preds {preds.shape}. Try fixing PredictDataset Collect keys.")
+                # 尝试截断以避免崩溃
+                min_len = min(indices.shape[0], preds.shape[0])
+                indices = indices[:min_len]
+                preds = preds[:min_len]
+
             global_logits[indices] += preds
             global_counts[indices] += 1
             
             if (idx + 1) % 10 == 0:
                 self.logger.info(f"Processed block batch {idx+1}/{len(self.test_loader)}")
+                
+            if self.cfg.get('empty_cache', False):
+                torch.cuda.empty_cache()
 
-        # --- 后处理与保存 ---
         self.logger.info("Merging blocks and saving...")
         
-        # 避免除以0 (虽然有 overlap 应该都有值，但以防万一)
         global_counts[global_counts == 0] = 1
-        # 实际上不需要除以 counts，argmax 结果是一样的，除非要算概率
-        
         pred_labels = global_logits.argmax(dim=1).numpy().astype(np.int32)
         
-        # 计算全场精度
+        # 计算精度
         segment = self.dataset.segment
-        if (segment != -1).any():
-            intersection, union, target = intersection_and_union(
-                pred_labels, segment, num_classes, ignore_index=-1
-            )
-            iou_class = intersection / (union + 1e-10)
-            mIoU = np.mean(iou_class)
-            allAcc = sum(intersection) / (sum(target) + 1e-10)
-            self.logger.info(f"Final Whole Scene Results: mIoU={mIoU:.4f}, OA={allAcc:.4f}")
+        valid_mask = (segment >= 0) & (segment < num_classes)
+        if not valid_mask.any():
+            self.logger.warning("Warning: No valid GT labels found. Skipping metrics.")
+        else:
+            eval_segment = np.full_like(segment, -1)
+            eval_segment[valid_mask] = segment[valid_mask]
+            
+            if (eval_segment != -1).any():
+                intersection, union, target = intersection_and_union(
+                    pred_labels, eval_segment, num_classes, ignore_index=-1
+                )
+                iou_class = intersection / (union + 1e-10)
+                mIoU = np.mean(iou_class)
+                allAcc = sum(intersection) / (sum(target) + 1e-10)
+                
+                self.logger.info(f"Final Whole Scene Results:")
+                self.logger.info(f"  mIoU: {mIoU:.4f}")
+                self.logger.info(f"  OA:   {allAcc:.4f}")
+                self.logger.info(f"  IoU per class: {iou_class}")
 
-        # 保存为 LAZ
-        out_name = os.path.basename(self.cfg.data.test.test_file)
+        # 保存 LAZ
+        if hasattr(self.cfg.data.test, 'test_file'):
+            src_filename = self.cfg.data.test.test_file
+        else:
+            src_filename = "output.laz"
+            
+        out_name = os.path.basename(src_filename).replace(".laz", "_pred.laz")
         out_file = os.path.join(save_path, out_name)
         self.save_laz(out_file, self.dataset, pred_labels)
         
@@ -172,7 +189,8 @@ class SemSegTesterLaz:
         data['Blue'] = blue
         data['Classification'] = classification
 
-        pipeline = pdal.Pipeline([data])
+        # [核心修复] 使用 arrays 参数传递数据
+        pipeline = pdal.Pipeline(arrays=[data])
         
         writer_opts = {
             "filename": filename,

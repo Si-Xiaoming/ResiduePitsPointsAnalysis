@@ -1,0 +1,77 @@
+[2026-01-18 23:37:18,263 INFO test_laz.py line 27 1120836] => Building model ...
+[2026-01-18 23:37:19,536 INFO test_laz.py line 55 1120836] => Loading weight from: /home/shsi/outputs/residue/residue-segment/subset-4-11/model/model_best.pth
+/home/shsi/codes/ResiduePitsPointsAnalysis/pointcept/engines/test_laz.py:56: FutureWarning: You are using `torch.load` with `weights_only=False` (the current default value), which uses the default pickle module implicitly. It is possible to construct malicious pickle data which will execute arbitrary code during unpickling (See https://github.com/pytorch/pytorch/blob/main/SECURITY.md#untrusted-models for more details). In a future release, the default value for `weights_only` will be flipped to `True`. This limits the functions that could be executed during unpickling. Arbitrary objects will no longer be allowed to be loaded via this mode unless they are explicitly allowlisted by the user via `torch.serialization.add_safe_globals`. We recommend you start setting `weights_only=True` for any use case where you don't have full control of the loaded file. Please open an issue on GitHub for any issues related to this experimental feature.
+  checkpoint = torch.load(self.cfg.weight, map_location="cpu")
+[2026-01-18 23:37:20,399 INFO test_laz.py line 34 1120836] => Building test dataset & dataloader ...
+[2026-01-18 23:37:20,400 INFO defaults.py line 70 1120836] Totally 0 x 1 samples in  test set.
+[2026-01-18 23:37:25,449 INFO test_laz.py line 69 1120836] >>>>>>>>>>>>>>>> Start Spatial Tiling Inference >>>>>>>>>>>>>>>>
+[2026-01-18 23:37:25,453 INFO test_laz.py line 79 1120836] Total Scene Points: 3364122
+[2026-01-18 23:37:27,391 WARNING test_laz.py line 112 1120836] Shape mismatch: indices torch.Size([114273]) vs preds torch.Size([102678, 4]). Skipping block.
+[2026-01-18 23:37:27,617 WARNING test_laz.py line 112 1120836] Shape mismatch: indices torch.Size([111735]) vs preds torch.Size([97385, 4]). Skipping block.
+[2026-01-18 23:37:27,850 WARNING test_laz.py line 112 1120836] Shape mismatch: indices torch.Size([111540]) vs preds torch.Size([97594, 4]). Skipping block.
+[2026-01-18 23:37:28,024 WARNING test_laz.py line 112 1120836] Shape mismatch: indices torch.Size([103409]) vs preds torch.Size([87444, 4]). Skipping block.
+[2026-01-18 23:37:28,194 WARNING test_laz.py line 112 1120836] Shape mismatch: indices torch.Size([101649]) vs preds torch.Size([85292, 4]). Skipping block.
+[2026-01-18 23:37:28,294 WARNING test_laz.py line 112 1120836] Shape mismatch: indices torch.Size([36286]) vs preds torch.Size([30505, 4]). Skipping block.
+[2026-01-18 23:37:28,521 WARNING test_laz.py line 112 1120836] Shape mismatch: indices torch.Size([114403]) vs preds torch.Size([97738, 4]). Skipping block.
+[2026-01-18 23:37:28,807 WARNING test_laz.py line 112 1120836] Shape mismatch: indices torch.Size([125739]) vs preds torch.Size([111293, 4]). Skipping block.
+[2026-01-18 23:37:29,077 WARNING test_laz.py line 112 1120836] Shape mismatch: indices torch.Size([121420]) vs preds torch.Size([107093, 4]). Skipping block.
+[2026-01-18 23:37:29,307 WARNING test_laz.py line 112 1120836] Shape mismatch: indices torch.Size([116837]) vs preds torch.Size([99926, 4]). Skipping block.
+[2026-01-18 23:37:29,517 WARNING test_laz.py line 112 1120836] Shape mismatch: indices torch.Size([116208]) vs preds torch.Size([97541, 4]). Skipping block.
+[2026-01-18 23:37:29,643 WARNING test_laz.py line 112 1120836] Shape mismatch: indices torch.Size([62608]) vs preds torch.Size([52363, 4]). Skipping block.
+[2026-01-18 23:37:29,856 WARNING test_laz.py line 112 1120836] Shape mismatch: indices torch.Size([116749]) vs preds torch.Size([98581, 4]). Skipping block.
+[2026-01-18 23:37:30,078 WARNING test_laz.py line 112 1120836] Shape mismatch: indices torch.Size([122279]) vs preds torch.Size([101098, 4]). Skipping block.
+[2026-01-18 23:37:30,327 WARNING test_laz.py line 112 1120836] Shape mismatch: indices torch.Size([123076]) vs preds torch.Size([104011, 4]). Skipping block.
+[2026-01-18 23:37:30,565 WARNING test_laz.py line 112 1120836] Shape mismatch: indices torch.Size([122307]) vs preds torch.Size([106562, 4]). Skipping block.
+[2026-01-18 23:37:30,814 WARNING test_laz.py line 112 1120836] Shape mismatch: indices torch.Size([123885]) vs preds torch.Size([108613, 4]). Skipping block.
+[2026-01-18 23:37:31,006 WARNING test_laz.py line 112 1120836] Shape mismatch: indices torch.Size([71861]) vs preds torch.Size([64084, 4]). Skipping block.
+[2026-01-18 23:37:31,228 WARNING test_laz.py line 112 1120836] Shape mismatch: indices torch.Size([106832]) vs preds torch.Size([91740, 4]). Skipping block.
+[2026-01-18 23:37:31,424 WARNING test_laz.py line 112 1120836] Shape mismatch: indices torch.Size([120819]) vs preds torch.Size([100058, 4]). Skipping block.
+[2026-01-18 23:37:31,605 WARNING test_laz.py line 112 1120836] Shape mismatch: indices torch.Size([121190]) vs preds torch.Size([99324, 4]). Skipping block.
+[2026-01-18 23:37:31,797 WARNING test_laz.py line 112 1120836] Shape mismatch: indices torch.Size([121818]) vs preds torch.Size([100904, 4]). Skipping block.
+[2026-01-18 23:37:32,052 WARNING test_laz.py line 112 1120836] Shape mismatch: indices torch.Size([126118]) vs preds torch.Size([109728, 4]). Skipping block.
+[2026-01-18 23:37:32,244 WARNING test_laz.py line 112 1120836] Shape mismatch: indices torch.Size([77247]) vs preds torch.Size([68663, 4]). Skipping block.
+[2026-01-18 23:37:32,418 WARNING test_laz.py line 112 1120836] Shape mismatch: indices torch.Size([86250]) vs preds torch.Size([73692, 4]). Skipping block.
+[2026-01-18 23:37:32,634 WARNING test_laz.py line 112 1120836] Shape mismatch: indices torch.Size([120892]) vs preds torch.Size([101840, 4]). Skipping block.
+[2026-01-18 23:37:32,816 WARNING test_laz.py line 112 1120836] Shape mismatch: indices torch.Size([121618]) vs preds torch.Size([100036, 4]). Skipping block.
+[2026-01-18 23:37:33,012 WARNING test_laz.py line 112 1120836] Shape mismatch: indices torch.Size([123025]) vs preds torch.Size([102179, 4]). Skipping block.
+[2026-01-18 23:37:33,222 WARNING test_laz.py line 112 1120836] Shape mismatch: indices torch.Size([124324]) vs preds torch.Size([104248, 4]). Skipping block.
+[2026-01-18 23:37:33,389 WARNING test_laz.py line 112 1120836] Shape mismatch: indices torch.Size([75120]) vs preds torch.Size([64957, 4]). Skipping block.
+[2026-01-18 23:37:33,556 WARNING test_laz.py line 112 1120836] Shape mismatch: indices torch.Size([78332]) vs preds torch.Size([67443, 4]). Skipping block.
+[2026-01-18 23:37:33,776 WARNING test_laz.py line 112 1120836] Shape mismatch: indices torch.Size([110608]) vs preds torch.Size([95035, 4]). Skipping block.
+[2026-01-18 23:37:34,012 WARNING test_laz.py line 112 1120836] Shape mismatch: indices torch.Size([114107]) vs preds torch.Size([95411, 4]). Skipping block.
+[2026-01-18 23:37:34,192 WARNING test_laz.py line 112 1120836] Shape mismatch: indices torch.Size([113879]) vs preds torch.Size([94789, 4]). Skipping block.
+[2026-01-18 23:37:34,365 WARNING test_laz.py line 112 1120836] Shape mismatch: indices torch.Size([113053]) vs preds torch.Size([93524, 4]). Skipping block.
+[2026-01-18 23:37:34,497 WARNING test_laz.py line 112 1120836] Shape mismatch: indices torch.Size([64024]) vs preds torch.Size([54103, 4]). Skipping block.
+[2026-01-18 23:37:34,613 WARNING test_laz.py line 112 1120836] Shape mismatch: indices torch.Size([49957]) vs preds torch.Size([41705, 4]). Skipping block.
+[2026-01-18 23:37:34,741 WARNING test_laz.py line 112 1120836] Shape mismatch: indices torch.Size([52542]) vs preds torch.Size([44878, 4]). Skipping block.
+[2026-01-18 23:37:34,854 WARNING test_laz.py line 112 1120836] Shape mismatch: indices torch.Size([49294]) vs preds torch.Size([40918, 4]). Skipping block.
+[2026-01-18 23:37:34,958 WARNING test_laz.py line 112 1120836] Shape mismatch: indices torch.Size([46126]) vs preds torch.Size([37773, 4]). Skipping block.
+[2026-01-18 23:37:35,045 WARNING test_laz.py line 112 1120836] Shape mismatch: indices torch.Size([42595]) vs preds torch.Size([34990, 4]). Skipping block.
+[2026-01-18 23:37:35,114 WARNING test_laz.py line 112 1120836] Shape mismatch: indices torch.Size([21909]) vs preds torch.Size([17898, 4]). Skipping block.
+[2026-01-18 23:37:35,165 INFO test_laz.py line 126 1120836] Merging blocks and saving...
+[2026-01-18 23:37:35,223 INFO test_laz.py line 140 1120836] Final Whole Scene Results: mIoU=0.2032, OA=0.8129
+[2026-01-18 23:37:35,223 INFO test_laz.py line 155 1120836] Writing LAZ to /home/shsi/outputs/residue/residue-segment-test/test-laz-inference-1121852/result_laz/02.laz...
+Traceback (most recent call last):
+  File "/home/shsi/codes/ResiduePitsPointsAnalysis/tools/test.py", line 39, in <module>
+    main()
+  File "/home/shsi/codes/ResiduePitsPointsAnalysis/tools/test.py", line 28, in main
+    launch(
+  File "/home/shsi/codes/ResiduePitsPointsAnalysis/pointcept/engines/launch.py", line 89, in launch
+    main_func(*cfg)
+  File "/home/shsi/codes/ResiduePitsPointsAnalysis/tools/test.py", line 21, in main_worker
+    tester.test()
+  File "/home/shsi/codes/ResiduePitsPointsAnalysis/pointcept/engines/test_laz.py", line 150, in test
+    self.save_laz(out_file, self.dataset, pred_labels)
+  File "/home/shsi/codes/ResiduePitsPointsAnalysis/pointcept/engines/test_laz.py", line 187, in save_laz
+    pipeline = pdal.Pipeline([data])
+  File "/home/shsi/.conda/envs/pointcept/lib/python3.10/site-packages/pdal/pipeline.py", line 61, in __init__
+    self |= stage
+  File "/home/shsi/.conda/envs/pointcept/lib/python3.10/site-packages/pdal/pipeline.py", line 110, in __ior__
+    raise TypeError(f"Expected Stage or Pipeline, not {other}")
+TypeError: Expected Stage or Pipeline, not [(607163.05999998, 4741266.94000004, 466.14000008,  9045, 13895, 15720, 0)
+ (607162.55999998, 4741266.99999998, 466.16999981,     0,     0,  6491, 0)
+ (607163.77000002, 4741266.44000004, 466.07000038, 13762, 19792, 14182, 0)
+ ...
+ (607445.29      , 4741515.25999878, 462.5699999 , 44425, 40433, 36741, 0)
+ (607445.26000122, 4741515.84999512, 462.47      , 35384, 26673, 22385, 0)
+ (607445.12999634, 4741516.70999573, 462.50000021, 41673, 36993, 37766, 0)]

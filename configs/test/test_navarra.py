@@ -57,7 +57,7 @@ model = dict(
     criteria=[
         dict(
             type="CrossEntropyLoss", loss_weight=1.0, ignore_index=-1
-            , weight=class_weights
+            #, weight=class_weights
             ),
         # dict(type="Poly1CrossEntropyLoss", 
         #  loss_weight=1.0, 
