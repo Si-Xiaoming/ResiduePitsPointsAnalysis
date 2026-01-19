@@ -17,4 +17,3 @@ outputs/
 
 libs/sonata-main
 sbatch/logs/
-sbatch/logger/

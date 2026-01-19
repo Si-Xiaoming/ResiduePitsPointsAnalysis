@@ -96,7 +96,10 @@ data = dict(
             has_label=True,             # 如果LAZ里有真值用于评估，设为True
         ),
         transforms=[
+            dict(type="CenterShift", apply_z=True),
             dict(type="NormalizeColor"), # 归一化颜色 (0-255 -> 0-1)
+            dict(type="RandomFlip", p=0.5), # 随机翻转 (X/Y)
+            dict(type="RandomScale", scale=[0.95, 1.05]), # 随机缩放 (±5%)
             # GridSample 负责将切好的 block 进行体素化
             # mode="test" 会生成 index 映射，这对我们很重要
             dict(

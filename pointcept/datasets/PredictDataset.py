@@ -16,11 +16,12 @@ class PredictDataset(DefaultDataset):
                  test_cfg=None,
                  cache=False,
                  ignore_index=-1,
-                 loop=1,
+                 loop=1, # [新功能] 支持 TTA 循环次数
                  test_file=None,
                  block_size=50.0,
                  stride=25.0):
         
+        # 1. 强制 test_mode=False，这样 transform 会被当作训练模式执行 (支持随机增强)
         super(PredictDataset, self).__init__(split=split, 
                                              data_root=data_root, 
                                              transform=transforms, 
@@ -28,29 +29,24 @@ class PredictDataset(DefaultDataset):
                                              test_cfg=test_cfg, 
                                              cache=cache, 
                                              ignore_index=ignore_index, 
-                                             loop=1)
+                                             loop=loop)
 
         self.test_file = test_file if test_file is not None else self.test_cfg.get('test_file')
         self.block_size = block_size if block_size is not None else self.test_cfg.get('block_size', 50.0)
         self.stride = stride if stride is not None else self.test_cfg.get('stride', 25.0)
-        
+        self.loop = loop # 记录循环次数
+
         if self.test_file is None:
             raise ValueError("PredictDataset requires 'test_file' argument.")
 
-        # ----------------------------------------------------------------------
-        # [自动修复逻辑] 强制修正 GridSample 和 Collect 的参数
-        # ----------------------------------------------------------------------
+        # [自动修复] 强制修正 transform 参数，确保 GridSample 和 Collect 配合 TTA 工作
         if hasattr(self, 'transform') and hasattr(self.transform, 'transforms'):
             for t in self.transform.transforms:
                 t_name = t.__class__.__name__
-                
-                # 1. 强制 GridSample 开启 inverse
                 if t_name == 'GridSample':
                     print(f"[Auto-Fix] Forcing GridSample to mode='train', return_inverse=True")
                     t.mode = 'train'
                     t.return_inverse = True
-                
-                # 2. 强制 Collect 收集 inverse
                 if t_name == 'Collect':
                     keys = list(t.keys) if isinstance(t.keys, (list, tuple)) else [t.keys]
                     if "inverse" not in keys:
@@ -81,7 +77,6 @@ class PredictDataset(DefaultDataset):
             f"Classification = 2 WHERE Classification == 6",
             f"Classification = 3 WHERE Classification == 8"
         ])
-
         
         pipeline.execute()
         
@@ -127,12 +122,11 @@ class PredictDataset(DefaultDataset):
 
         print(f"Partitioning scene with block_size={self.block_size}m, stride={self.stride}m ...")
         self.block_indices = self._split_scene(self.pos, self.block_size, self.stride)
-        print(f"Generated {len(self.block_indices)} blocks.")
+        print(f"Generated {len(self.block_indices)} blocks. TTA Loop: {self.loop}x. Total samples: {len(self.block_indices) * self.loop}")
 
     def _split_scene(self, points, block_size, stride):
         coord_min = points.min(0)
         coord_max = points.max(0)
-        
         grid_x = math.ceil((coord_max[0] - coord_min[0]) / stride)
         grid_y = math.ceil((coord_max[1] - coord_min[1]) / stride)
         
@@ -143,11 +137,9 @@ class PredictDataset(DefaultDataset):
                 s_y = coord_min[1] + j * stride
                 e_x = s_x + block_size
                 e_y = s_y + block_size
-                
                 mask = (points[:, 0] >= s_x) & (points[:, 0] < e_x) & \
                        (points[:, 1] >= s_y) & (points[:, 1] < e_y)
                 indices = np.where(mask)[0]
-                
                 if len(indices) > 100: 
                     block_list.append(indices)
         return block_list
@@ -163,14 +155,19 @@ class PredictDataset(DefaultDataset):
         return np.expand_dims(val, 1)
 
     def get_data(self, idx):
-        block_idx = self.block_indices[idx]
+        # [核心逻辑] 支持循环采样：不同的 idx 可能指向同一个 block，
+        # 但后续的 transforms (如 RandomFlip) 每次调用都会产生不同的随机效果
+        block_real_idx = idx % len(self.block_indices)
+        block_idx_arr = self.block_indices[block_real_idx]
+        
         data_dict = {}
-        data_dict["coord"] = self.pos[block_idx]
-        data_dict["color"] = self.color[block_idx]
-        data_dict["segment"] = self.segment[block_idx]
-        data_dict["index"] = block_idx.astype(np.int64) 
+        data_dict["coord"] = self.pos[block_idx_arr]
+        data_dict["color"] = self.color[block_idx_arr]
+        data_dict["segment"] = self.segment[block_idx_arr]
+        data_dict["index"] = block_idx_arr.astype(np.int64) 
         data_dict["name"] = os.path.basename(self.test_file)
         return data_dict
 
     def __len__(self):
-        return len(self.block_indices)
+        # 数据集总长度 = 块数量 * 循环次数
+        return len(self.block_indices) * self.loop

@@ -63,7 +63,7 @@ class SemSegTesterLaz:
         return create_ddp_model(model.cuda(), broadcast_buffers=False)
 
     def test(self):
-        self.logger.info(">>>>>>>>>>>>>>>> Start Spatial Tiling Inference >>>>>>>>>>>>>>>>")
+        self.logger.info(">>>>>>>>>>>>>>>> Start TTA Inference >>>>>>>>>>>>>>>>")
         self.model.eval()
         
         save_path = os.path.join(self.cfg.save_path, "result_laz")
@@ -74,13 +74,14 @@ class SemSegTesterLaz:
         
         self.logger.info(f"Total Scene Points: {total_points}")
         
+        # 全局 Logits 累加器
         global_logits = torch.zeros((total_points, num_classes), dtype=torch.float16, device='cpu')
         global_counts = torch.zeros((total_points), dtype=torch.int16, device='cpu')
 
         start_time = time.time()
         
         for idx, input_dict in enumerate(self.test_loader):
-            # 移除 segment 防止 loss 计算错误
+            # 移除 segment 防止报错
             if "segment" in input_dict:
                 del input_dict["segment"]
 
@@ -102,24 +103,23 @@ class SemSegTesterLaz:
             preds = pred_expanded.detach().cpu().half()
             
             if indices.shape[0] != preds.shape[0]:
-                self.logger.warning(f"Shape mismatch: indices {indices.shape} vs preds {preds.shape}. Try fixing PredictDataset Collect keys.")
-                # 尝试截断以避免崩溃
+                self.logger.warning(f"Shape mismatch: indices {indices.shape} vs preds {preds.shape}. Truncating.")
                 min_len = min(indices.shape[0], preds.shape[0])
                 indices = indices[:min_len]
                 preds = preds[:min_len]
 
+            # [投票核心]：多次循环的预测结果会累加到 global_logits 的同一位置
             global_logits[indices] += preds
             global_counts[indices] += 1
             
             if (idx + 1) % 10 == 0:
-                self.logger.info(f"Processed block batch {idx+1}/{len(self.test_loader)}")
+                self.logger.info(f"Processed batch {idx+1}/{len(self.test_loader)}")
                 
             if self.cfg.get('empty_cache', False):
                 torch.cuda.empty_cache()
 
-        self.logger.info("Merging blocks and saving...")
+        self.logger.info("Merging TTA results and saving...")
         
-        global_counts[global_counts == 0] = 1
         pred_labels = global_logits.argmax(dim=1).numpy().astype(np.int32)
         
         # 计算精度
@@ -139,12 +139,12 @@ class SemSegTesterLaz:
                 mIoU = np.mean(iou_class)
                 allAcc = sum(intersection) / (sum(target) + 1e-10)
                 
-                self.logger.info(f"Final Whole Scene Results:")
+                self.logger.info(f"Final TTA Results:")
                 self.logger.info(f"  mIoU: {mIoU:.4f}")
                 self.logger.info(f"  OA:   {allAcc:.4f}")
                 self.logger.info(f"  IoU per class: {iou_class}")
 
-        # 保存 LAZ
+        # 保存
         if hasattr(self.cfg.data.test, 'test_file'):
             src_filename = self.cfg.data.test.test_file
         else:
@@ -189,7 +189,6 @@ class SemSegTesterLaz:
         data['Blue'] = blue
         data['Classification'] = classification
 
-        # [核心修复] 使用 arrays 参数传递数据
         pipeline = pdal.Pipeline(arrays=[data])
         
         writer_opts = {
