@@ -1,5 +1,5 @@
 #!/bin/bash
-#SBATCH --job-name=subset-4-11
+#SBATCH --job-name=subset-4-12
 #SBATCH --mail-type=END,FAIL
 #SBATCH --mail-user=d119918@studenti.polito.it
 #SBATCH --partition=gpu_a40
@@ -18,7 +18,7 @@ export PYTHONPATH=./
 echo "当前工作目录: $(pwd)"
 
 
-CONFIG_PATH=configs/subset_test/all-navarra.py
+CONFIG_PATH=configs/subset_test/supervised.py
 # all-navarra.py     decoder-navarra.py   linear-navarra.py
 SAVE_PATH=/home/shsi/outputs/residue/residue-segment
 # 输出job name

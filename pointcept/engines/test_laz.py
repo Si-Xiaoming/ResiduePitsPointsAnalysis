@@ -144,7 +144,7 @@ class SemSegTesterLaz:
                 self.logger.info(f"  OA:   {allAcc:.4f}")
                 self.logger.info(f"  IoU per class: {iou_class}")
 
-        # 保存
+        
         if hasattr(self.cfg.data.test, 'test_file'):
             src_filename = self.cfg.data.test.test_file
         else:
